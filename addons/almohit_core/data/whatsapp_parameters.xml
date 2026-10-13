@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- DEPRECATED unused: distributor is stock.picking.user_id. Kept for noupdate ir.model.data. -->
+        <record id="config_whatsapp_distributor_partner" model="ir.config_parameter">
+            <field name="key">almohit.whatsapp.distributor_partner_id</field>
+            <field name="value">0</field>
+        </record>
+        <!-- DEPRECATED unused: distribution uses native Payment Terms. Kept for noupdate ir.model.data. -->
+        <record id="config_deposit_percent" model="ir.config_parameter">
+            <field name="key">almohit.deposit_percent</field>
+            <field name="value">30</field>
+        </record>
+    </data>
+</odoo>

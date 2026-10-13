@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: odoo17_db
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=odoo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - odoo-network
+    restart: unless-stopped
+
+  odoo:
+    image: odoo:17
+    container_name: odoo17
+    depends_on:
+      - db
+    ports:
+      - "8070:8069"
+    volumes:
+      - odoo_data:/var/lib/odoo
+      - ./addons:/mnt/extra-addons
+    environment:
+      - HOST=db
+      - USER=odoo
+      - PASSWORD=odoo
+      - WHATSAPP_SERVICE_URL=http://almohit_whatsapp:3000
+      - WHATSAPP_SERVICE_TOKEN=${WHATSAPP_SERVICE_TOKEN:-almohit-whatsapp-dev}
+      - WHATSAPP_ENABLED=${WHATSAPP_ENABLED:-false}
+    networks:
+      - odoo-network
+    restart: unless-stopped
+
+  almohit_whatsapp:
+    profiles: ["whatsapp"]
+    build:
+      context: "../Wholesale Commerce Platform/services/almohit-whatsapp"
+      dockerfile: Dockerfile
+    container_name: almohit_whatsapp
+    environment:
+      - PORT=3000
+      - WHATSAPP_SERVICE_TOKEN=${WHATSAPP_SERVICE_TOKEN:-almohit-whatsapp-dev}
+      - WHATSAPP_ENABLED=true
+      - WHATSAPP_DATA_DIR=/data
+      - CHROME_PATH=/usr/bin/chromium
+    volumes:
+      - whatsapp_data:/data
+    ports:
+      - "127.0.0.1:3001:3000"
+    shm_size: "1gb"
+    networks:
+      - odoo-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  odoo_data:
+  whatsapp_data:
+
+networks:
+  odoo-network:
+    driver: bridge

@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_almohit_notification_template_tree" model="ir.ui.view">
+        <field name="name">almohit.notification.template.tree</field>
+        <field name="model">almohit.notification.template</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="event_code"/>
+                <field name="model_id"/>
+                <field name="recipient_type"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_almohit_notification_template_form" model="ir.ui.view">
+        <field name="name">almohit.notification.template.form</field>
+        <field name="model">almohit.notification.template</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_open_preview" type="object" string="Preview" class="oe_highlight"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1>
+                            <field name="name" placeholder="Template name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="active"/>
+                            <field name="event_code"/>
+                        </group>
+                        <group>
+                            <field name="model_id"/>
+                            <field name="model_name" invisible="1"/>
+                            <field name="recipient_type"/>
+                        </group>
+                    </group>
+                    <group string="Message Body">
+                    <field
+                        name="body"
+                        nolabel="1"
+                        colspan="4"
+                        placeholder="اكتب رسالة واتساب هنا..."
+                        style="min-height: 260px; width: 100%; direction: rtl; text-align: right;"
+                    />
+                    </group>
+                    <group string="Available Variables">
+                        <field name="variable_help" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_almohit_notification_template" model="ir.actions.act_window">
+        <field name="name">Templates</field>
+        <field name="res_model">almohit.notification.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No WhatsApp templates yet
+            </p>
+            <p>
+                Each supported event has one editable WhatsApp template.
+            </p>
+        </field>
+    </record>
+
+    <record id="view_almohit_notification_preview_form" model="ir.ui.view">
+        <field name="name">almohit.notification.preview.form</field>
+        <field name="model">almohit.notification.preview</field>
+        <field name="arch" type="xml">
+            <form string="Preview WhatsApp Message">
+                <group>
+                    <field name="template_id" readonly="1"/>
+                    <field name="event_code"/>
+                    <field name="model_name" invisible="1"/>
+                    <field name="application_id" invisible="model_name != 'almohit.trade.application'"/>
+                    <field name="order_id" invisible="model_name != 'sale.order'"/>
+                    <field name="invoice_id" invisible="model_name != 'account.move'"/>
+                    <field name="picking_id" invisible="model_name != 'stock.picking'"/>
+                </group>
+                <group string="Rendered Message">
+                    <field name="preview_text" nolabel="1" placeholder="Click Preview to render the message."/>
+                    <field name="error" invisible="not error"/>
+                </group>
+                <footer>
+                    <button name="action_render" type="object" string="Preview" class="oe_highlight"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_almohit_notification_log_tree" model="ir.ui.view">
+        <field name="name">almohit.notification.log.tree</field>
+        <field name="model">almohit.notification.log</field>
+        <field name="arch" type="xml">
+            <tree create="false" delete="false">
+                <field name="create_date"/>
+                <field name="event_code"/>
+                <field name="res_model"/>
+                <field name="res_id"/>
+                <field name="partner_id"/>
+                <field name="recipient_masked"/>
+                <field name="status"/>
+                <field name="render_source"/>
+                <field name="error"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_almohit_notification_log_form" model="ir.ui.view">
+        <field name="name">almohit.notification.log.form</field>
+        <field name="model">almohit.notification.log</field>
+        <field name="arch" type="xml">
+            <form create="false" delete="false">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="event_code"/>
+                            <field name="res_model"/>
+                            <field name="res_id"/>
+                            <field name="channel"/>
+                            <field name="partner_id"/>
+                            <field name="recipient_masked"/>
+                        </group>
+                        <group>
+                            <field name="status"/>
+                            <field name="template_id"/>
+                            <field name="render_source"/>
+                            <field name="attempt_count"/>
+                            <field name="sent_at"/>
+                            <field name="error"/>
+                            <field name="message_id"/>
+                        </group>
+                    </group>
+                    <group string="Notification Text">
+                        <field name="message" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_almohit_notification_log" model="ir.actions.act_window">
+        <field name="name">Notification Logs</field>
+        <field name="res_model">almohit.notification.log</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{}</field>
+    </record>
+
+    <menuitem id="menu_almohit_root" name="Almohit" sequence="45" groups="base.group_user"/>
+    <menuitem
+        id="menu_almohit_whatsapp"
+        name="WhatsApp"
+        parent="menu_almohit_root"
+        sequence="10"
+        groups="base.group_user"/>
+    <menuitem
+        id="menu_almohit_whatsapp_templates"
+        name="Templates"
+        parent="menu_almohit_whatsapp"
+        action="action_almohit_notification_template"
+        sequence="10"
+        groups="base.group_user"/>
+    <menuitem
+        id="menu_almohit_whatsapp_logs"
+        name="Notification Logs"
+        parent="menu_almohit_whatsapp"
+        action="action_almohit_notification_log"
+        sequence="20"
+        groups="base.group_user"/>
+</odoo>

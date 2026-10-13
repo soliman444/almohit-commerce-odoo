@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_almohit_trade_application_tree" model="ir.ui.view">
+        <field name="name">almohit.trade.application.tree</field>
+        <field name="model">almohit.trade.application</field>
+        <field name="arch" type="xml">
+            <tree create="false" delete="false">
+                <field name="create_date"/>
+                <field name="company_name"/>
+                <field name="partner_id"/>
+                <field name="requested_role"/>
+                <field name="recruited_by_id"/>
+                <field name="business_type"/>
+                <field name="phone"/>
+                <field name="status"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_almohit_trade_application_form" model="ir.ui.view">
+        <field name="name">almohit.trade.application.form</field>
+        <field name="model">almohit.trade.application</field>
+        <field name="arch" type="xml">
+            <form create="false" delete="false">
+                <header>
+                    <button name="action_approve" type="object" string="Approve"
+                            class="oe_highlight" invisible="status != 'pending'"/>
+                    <button name="action_reject" type="object" string="Reject"
+                            invisible="status != 'pending'"/>
+                    <field name="status" widget="statusbar"
+                           statusbar_visible="pending,approved,rejected"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="requested_role"/>
+                            <field name="recruited_by_id"/>
+                            <field name="company_name"/>
+                            <field name="business_type"/>
+                            <field name="tax_number"/>
+                            <field name="phone"/>
+                            <field name="street"/>
+                            <field name="city"/>
+                        </group>
+                        <group>
+                            <field name="manager_name"/>
+                            <field name="employee_name"/>
+                            <field name="bank_account"/>
+                            <field name="payment_method"/>
+                            <field name="shop_image" widget="image"/>
+                            <field name="reviewed_by"/>
+                            <field name="reviewed_at"/>
+                            <field name="rejection_reason"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="notes"/>
+                    </group>
+                    <group>
+                        <field name="create_uid" readonly="1"/>
+                        <field name="create_date" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_almohit_trade_application_search" model="ir.ui.view">
+        <field name="name">almohit.trade.application.search</field>
+        <field name="model">almohit.trade.application</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="company_name"/>
+                <field name="partner_id"/>
+                <field name="tax_number"/>
+                <field name="requested_role"/>
+                <filter string="Pending" name="pending" domain="[('status', '=', 'pending')]"/>
+                <filter string="Buyers" name="buyers" domain="[('requested_role', '=', 'buyer')]"/>
+                <filter string="Approved" name="approved" domain="[('status', '=', 'approved')]"/>
+                <filter string="Rejected" name="rejected" domain="[('status', '=', 'rejected')]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_almohit_trade_application" model="ir.actions.act_window">
+        <field name="name">Trade Applications</field>
+        <field name="res_model">almohit.trade.application</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_almohit_trade_application_search"/>
+        <field name="context">{'search_default_pending': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No trade applications yet
+            </p>
+            <p>
+                Customers submit wholesale applications from the storefront.
+                Review them here to approve or reject trade access.
+            </p>
+        </field>
+    </record>
+
+    <menuitem
+        id="menu_almohit_trade_application"
+        name="Trade Applications"
+        parent="contacts.menu_contacts"
+        action="action_almohit_trade_application"
+        sequence="20"
+        groups="base.group_user"/>
+</odoo>

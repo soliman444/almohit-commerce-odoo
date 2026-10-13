@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="notification_template_trade_approved" model="almohit.notification.template">
+        <field name="name">Trade Approved</field>
+        <field name="event_code">trade_approved</field>
+        <field name="active" eval="True"/>
+        <field name="body">مرحبًا {{ object.partner_id.name }}،
+تمت الموافقة على حساب الجملة الخاص بك في Almohit.
+يمكنك الآن تسجيل الدخول والاطلاع على أسعار الجملة.</field>
+    </record>
+
+    <record id="notification_template_order_confirmed" model="almohit.notification.template">
+        <field name="name">Order Confirmed</field>
+        <field name="event_code">order_confirmed</field>
+        <field name="active" eval="True"/>
+        <field name="body">مرحبًا {{ object.partner_id.name }}،
+تم تأكيد طلبك {{ object.name }}.
+الإجمالي: {{ object.amount_total }} {{ object.currency_id.name }}.
+شروط الدفع: {{ object.payment_term_id.name }}.</field>
+    </record>
+
+    <record id="notification_template_invoice_posted" model="almohit.notification.template">
+        <field name="name">Invoice Posted</field>
+        <field name="event_code">invoice_posted</field>
+        <field name="active" eval="True"/>
+        <field name="body">مرحبًا {{ object.partner_id.name }}،
+تم إصدار الفاتورة {{ object.name }}.
+إجمالي الفاتورة: {{ object.amount_total }} {{ object.currency_id.name }}.
+المبلغ المستحق حاليًا: {{ due_now }} {{ object.currency_id.name }}.
+شروط الدفع: {{ payment_term_name }}.
+تاريخ الاستحقاق القادم: {{ next_due_date }}.
+يمكنك مراجعة الفاتورة وإتمام السداد من حسابك في Almohit.</field>
+    </record>
+
+    <record id="notification_template_distribution_requirement" model="almohit.notification.template">
+        <field name="name">Distribution Payment Requirement Satisfied</field>
+        <field name="event_code">distribution_payment_requirement_satisfied</field>
+        <field name="active" eval="True"/>
+        <field name="body">تم استيفاء المبلغ المستحق حاليًا للطلب {{ object.name }}.
+أصبح الطلب جاهزًا للإسناد إلى الموزع.</field>
+    </record>
+
+    <record id="notification_template_payment_received" model="almohit.notification.template">
+        <field name="name">Payment Received</field>
+        <field name="event_code">payment_received</field>
+        <field name="active" eval="True"/>
+        <field name="body">مرحبًا {{ object.partner_id.name }}،
+
+تم استلام دفعة بقيمة {{ payment_amount }} {{ object.currency_id.name }}
+للفاتورة {{ object.name }}.
+
+المتبقي على الفاتورة:
+{{ invoice_residual }} {{ object.currency_id.name }}.
+
+إجمالي الرصيد غير المسدد على حسابكم:
+{{ outstanding_balance }} {{ object.currency_id.name }}.</field>
+    </record>
+
+    <record id="notification_template_invoice_paid" model="almohit.notification.template">
+        <field name="name">Invoice Paid</field>
+        <field name="event_code">invoice_paid</field>
+        <field name="active" eval="True"/>
+        <field name="body">تم استلام كامل قيمة الفاتورة {{ object.name }}.
+المبلغ المتبقي: 0 {{ object.currency_id.name }}.</field>
+    </record>
+
+    <record id="notification_template_distribution_assigned" model="almohit.notification.template">
+        <field name="name">Distribution Assigned</field>
+        <field name="event_code">distribution_assigned</field>
+        <field name="active" eval="True"/>
+        <field name="body">تم إسناد طلب جديد إليك للتوزيع.
+
+رقم الطلب: {{ order_name }}
+العميل: {{ customer_name }}
+عنوان التوصيل: {{ shipping_address }}
+إجمالي الطلب: {{ amount_total }} {{ currency }}
+حالة السداد: المبلغ المستحق حاليًا مستوفى
+
+يرجى البدء في تجهيز وتسليم الطلب.</field>
+    </record>
+
+    <record id="notification_template_delivery_done" model="almohit.notification.template">
+        <field name="name">Delivery Done</field>
+        <field name="event_code">delivery_done</field>
+        <field name="active" eval="True"/>
+        <field name="body">تم تسليم الطلب {{ order_name }} بنجاح.
+مرجع التسليم: {{ object.name }}.</field>
+    </record>
+</odoo>

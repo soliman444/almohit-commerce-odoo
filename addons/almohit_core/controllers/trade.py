@@ -1,0 +1,90 @@
+from odoo import http
+from odoo.http import request
+
+from ..services.api import error, read_json_body, success
+from ..services.customer import require_customer_partner
+from ..services.trade import (
+    APPLICATION_ALREADY_APPROVED,
+    APPLICATION_ALREADY_PENDING,
+    COMPANY_NAME_REQUIRED,
+    INVALID_IMAGE,
+    INVALID_PAYMENT_METHOD,
+    INVALID_ROLE,
+    create_own_application,
+    get_latest_own_application,
+    serialize_application,
+)
+
+
+class AlmohitTradeController(http.Controller):
+
+    @http.route(
+        "/almohit/api/trade/applications",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        csrf=False,
+    )
+    def create_application(self, **kwargs):
+        partner, err = require_customer_partner()
+        if err:
+            return err
+
+        payload, err = read_json_body()
+        if err:
+            return err
+
+        application, code = create_own_application(request.env, partner, payload)
+        if code == COMPANY_NAME_REQUIRED:
+            return error(
+                "COMPANY_NAME_REQUIRED",
+                "Company name is required.",
+                400,
+            )
+        if code == APPLICATION_ALREADY_PENDING:
+            return error(
+                "APPLICATION_ALREADY_PENDING",
+                "A pending trade application already exists.",
+                409,
+            )
+        if code == APPLICATION_ALREADY_APPROVED:
+            return error(
+                "APPLICATION_ALREADY_APPROVED",
+                "An approved trade application already exists.",
+                409,
+            )
+        if code == INVALID_IMAGE:
+            return error(
+                "INVALID_IMAGE",
+                "Shop image is missing or not allowed.",
+                400,
+            )
+        if code == INVALID_PAYMENT_METHOD:
+            return error(
+                "INVALID_PAYMENT_METHOD",
+                "Payment method must be bank_transfer, cash, or both.",
+                400,
+            )
+        if code == INVALID_ROLE:
+            return error(
+                "INVALID_ROLE",
+                "Role must be merchant, buyer, distributor, or marketer.",
+                400,
+            )
+
+        return success(serialize_application(application), status=201)
+
+    @http.route(
+        "/almohit/api/trade/application",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def get_application(self, **kwargs):
+        partner, err = require_customer_partner()
+        if err:
+            return err
+
+        application = get_latest_own_application(request.env, partner)
+        return success(serialize_application(application))

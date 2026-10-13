@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_almohit_whatsapp" model="ir.ui.view">
+        <field name="name">res.config.settings.almohit.whatsapp</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app
+                    string="Almohit WhatsApp"
+                    name="almohit_whatsapp"
+                    groups="base.group_system">
+                    <block title="WhatsApp Account" name="almohit_whatsapp_account_block">
+                        <setting
+                            id="almohit_whatsapp_enabled_setting"
+                            string="Enable notifications"
+                            help="Business events still succeed when WhatsApp is off.">
+                            <field name="almohit_whatsapp_enabled"/>
+                        </setting>
+                        <setting
+                            id="almohit_whatsapp_account_setting"
+                            string="Account number"
+                            help="Enter the business WhatsApp number that sends Almohit messages. Link it by scanning the QR code printed in the WhatsApp service logs.">
+                            <field name="almohit_whatsapp_account_phone" placeholder="+9665xxxxxxxx" widget="phone"/>
+                        </setting>
+                        <setting
+                            id="almohit_whatsapp_connection_setting"
+                            string="Connection"
+                            help="Live status of the WhatsApp Web session used to send messages.">
+                            <div class="content-group">
+                                <field name="almohit_whatsapp_connection" readonly="1"/>
+                                <button
+                                    name="action_almohit_whatsapp_check"
+                                    type="object"
+                                    string="Check connection"
+                                    class="btn-link"/>
+                            </div>
+                        </setting>
+                    </block>
+                    <block title="Send Service" name="almohit_whatsapp_service_block">
+                        <setting
+                            id="almohit_whatsapp_url_setting"
+                            string="Service URL"
+                            help="HTTP URL of the Almohit WhatsApp send service.">
+                            <field name="almohit_whatsapp_service_url" placeholder="http://almohit_whatsapp:3000"/>
+                        </setting>
+                        <setting
+                            id="almohit_whatsapp_token_setting"
+                            string="Service token"
+                            help="Shared Bearer token between Odoo and the WhatsApp send service.">
+                            <field name="almohit_whatsapp_service_token" password="True"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_almohit_whatsapp_settings" model="ir.actions.act_window">
+        <field name="name">Configuration</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_id" ref="base.res_config_settings_view_form"/>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'almohit_whatsapp'}</field>
+    </record>
+
+    <menuitem
+        id="menu_almohit_whatsapp_settings"
+        name="Configuration"
+        parent="menu_almohit_whatsapp"
+        action="action_almohit_whatsapp_settings"
+        sequence="5"
+        groups="base.group_system"/>
+</odoo>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="config_travel_default_sell_margin_percent" model="ir.config_parameter">
+        <field name="key">custom_currency_rates.travel_default_sell_margin_percent</field>
+        <field name="value">2</field>
+    </record>
+    <record id="config_travel_disable_sell_margin_fallback" model="ir.config_parameter">
+        <field name="key">custom_currency_rates.travel_disable_sell_margin_fallback</field>
+        <field name="value">0</field>
+    </record>
+</odoo>

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_currency_form_travel_frankfurter" model="ir.ui.view">
+        <field name="name">res.currency.form.travel.frankfurter</field>
+        <field name="model">res.currency</field>
+        <field name="inherit_id" ref="base.view_currency_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="before">
+                <header groups="account.group_account_manager">
+                    <button
+                        name="action_fetch_frankfurter_travel_rates"
+                        type="object"
+                        string="Fetch travel rates (Frankfurter)"
+                        class="oe_highlight"
+                        invisible="is_current_company_currency"
+                    />
+                    <button
+                        name="action_recompute_travel_sell_rates"
+                        type="object"
+                        string="Recompute travel sell from rates"
+                        invisible="is_current_company_currency"
+                    />
+                </header>
+            </xpath>
+            <xpath expr="//notebook[@class='o_currency_rate_list']" position="before">
+                <group string="Travel FX" groups="account.group_account_manager">
+                    <group>
+                        <field name="travel_auto_update"/>
+                        <field name="travel_sell_margin_percent"/>
+                    </group>
+                    <group>
+                        <div class="text-muted" colspan="2">
+                            Frankfurter rate is written to Odoo company_rate (buy / accounting).
+                            Travel sell rate = company_rate × (1 + margin/100). If margins are 0,
+                            fetch applies a 2% fallback unless disabled via system parameters.
+                        </div>
+                    </group>
+                </group>
+            </xpath>
+            <xpath expr="//field[@name='rate_ids']/tree/field[@name='inverse_company_rate']" position="after">
+                <field name="travel_sell_margin_percent" optional="show"/>
+                <field name="travel_sell_rate" optional="show" readonly="travel_provider"/>
+                <field name="travel_provider" optional="hide"/>
+                <field name="travel_provider_rate_date" optional="hide"/>
+                <field name="travel_last_fetch_datetime" optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_currency_rate_tree_travel" model="ir.ui.view">
+        <field name="name">res.currency.rate.tree.travel</field>
+        <field name="model">res.currency.rate</field>
+        <field name="inherit_id" ref="base.view_currency_rate_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='inverse_company_rate']" position="after">
+                <field name="travel_sell_margin_percent" optional="show"/>
+                <field name="travel_sell_rate" optional="show" readonly="travel_provider"/>
+                <field name="travel_provider" optional="hide"/>
+                <field name="travel_provider_rate_date" optional="hide"/>
+                <field name="travel_last_fetch_datetime" optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_currency_rate_form_travel" model="ir.ui.view">
+        <field name="name">res.currency.rate.form.travel</field>
+        <field name="model">res.currency.rate</field>
+        <field name="inherit_id" ref="base.view_currency_rate_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='inverse_company_rate']" position="after">
+                <field name="travel_sell_margin_percent"/>
+                <field name="travel_sell_rate" readonly="travel_provider"/>
+                <field name="travel_provider" readonly="1"/>
+                <field name="travel_provider_rate_date" readonly="1"/>
+                <field name="travel_last_fetch_datetime" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_fetch_frankfurter_travel_rates_server" model="ir.actions.server">
+        <field name="name">Fetch travel rates (Frankfurter)</field>
+        <field name="model_id" ref="base.model_res_currency"/>
+        <field name="binding_model_id" ref="base.model_res_currency"/>
+        <field name="binding_view_types">list,form</field>
+        <field name="state">code</field>
+        <field name="groups_id" eval="[(4, ref('account.group_account_manager'))]"/>
+        <field name="code">action = records.action_fetch_frankfurter_travel_rates()</field>
+    </record>
+</odoo>

@@ -1,0 +1,10 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_almohit_trade_application_user,almohit.trade.application.user,model_almohit_trade_application,base.group_user,1,1,0,0
+access_almohit_product_brand_user,almohit.product.brand.user,model_almohit_product_brand,base.group_user,1,1,1,1
+access_almohit_product_image_user,product.image.user,model_product_image,base.group_user,1,1,1,1
+access_almohit_product_image_portal,product.image.portal,model_product_image,base.group_portal,1,0,0,0
+access_almohit_product_image_public,product.image.public,model_product_image,base.group_public,1,0,0,0
+access_almohit_notification_log_user,almohit.notification.log.user,model_almohit_notification_log,base.group_user,1,0,0,0
+access_almohit_notification_template_user,almohit.notification.template.user,model_almohit_notification_template,base.group_user,1,0,0,0
+access_almohit_notification_template_system,almohit.notification.template.system,model_almohit_notification_template,base.group_system,1,1,1,1
+access_almohit_notification_preview_user,almohit.notification.preview.user,model_almohit_notification_preview,base.group_user,1,1,1,1

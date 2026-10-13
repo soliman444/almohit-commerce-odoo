@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_custom_currency_rate_sync_form" model="ir.ui.view">
+        <field name="name">custom.currency.rate.sync.form</field>
+        <field name="model">custom.currency.rate.sync</field>
+        <field name="arch" type="xml">
+            <form string="Currency rate sync">
+                <header>
+                    <button
+                        name="action_sync_now"
+                        type="object"
+                        string="Update rates now"
+                        class="btn-primary"
+                    />
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. Main banks / USD set"/></h1>
+                    </div>
+                    <group>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="active"/>
+                        <field name="auto_sync"/>
+                    </group>
+                    <group string="Rate provider">
+                        <field name="rate_provider" widget="radio" options="{'horizontal': true}"/>
+                        <field
+                            name="currencyapi_api_key"
+                            password="True"
+                            placeholder="cur_live_…"
+                            invisible="rate_provider != 'currencyapi'"
+                            required="rate_provider == 'currencyapi'"
+                        />
+                    </group>
+                    <group string="Currencies">
+                        <field
+                            name="currency_ids"
+                            widget="many2many_tags"
+                            options="{'no_create': True}"
+                            domain="[('active', '=', True), ('id', '!=', company_currency_id)]"
+                        />
+                        <field name="company_currency_id" readonly="1"/>
+                    </group>
+                    <group string="Last run">
+                        <field name="last_sync"/>
+                        <field name="last_error" invisible="not last_error"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_custom_currency_rate_sync_tree" model="ir.ui.view">
+        <field name="name">custom.currency.rate.sync.tree</field>
+        <field name="model">custom.currency.rate.sync</field>
+        <field name="arch" type="xml">
+            <tree string="Currency sync">
+                <field name="name"/>
+                <field name="rate_provider"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="auto_sync"/>
+                <field name="last_sync"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_custom_currency_rate_sync" model="ir.actions.act_window">
+        <field name="name">Currency rate sync</field>
+        <field name="res_model">custom.currency.rate.sync</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem
+        id="menu_custom_currency_rate_sync"
+        name="Currency rate sync"
+        parent="account.menu_finance_configuration"
+        action="action_custom_currency_rate_sync"
+        sequence="80"
+    />
+</odoo>
