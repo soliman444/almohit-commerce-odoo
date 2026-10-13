@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
     container_name: odoo17_db
     environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=odoo
-      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -26,24 +24,23 @@ services:
       - ./addons:/mnt/extra-addons
     environment:
       - HOST=db
-      - USER=odoo
-      - PASSWORD=odoo
+      - USER=${POSTGRES_USER}
+      - PASSWORD=${POSTGRES_PASSWORD}
       - WHATSAPP_SERVICE_URL=http://almohit_whatsapp:3000
-      - WHATSAPP_SERVICE_TOKEN=${WHATSAPP_SERVICE_TOKEN:-almohit-whatsapp-dev}
-      - WHATSAPP_ENABLED=${WHATSAPP_ENABLED:-false}
+      - WHATSAPP_SERVICE_TOKEN=${WHATSAPP_SERVICE_TOKEN}
+      - WHATSAPP_ENABLED=${WHATSAPP_ENABLED:-true}
     networks:
       - odoo-network
     restart: unless-stopped
 
   almohit_whatsapp:
-    profiles: ["whatsapp"]
     build:
-      context: "../Wholesale Commerce Platform/services/almohit-whatsapp"
+      context: ./services/almohit-whatsapp
       dockerfile: Dockerfile
     container_name: almohit_whatsapp
     environment:
       - PORT=3000
-      - WHATSAPP_SERVICE_TOKEN=${WHATSAPP_SERVICE_TOKEN:-almohit-whatsapp-dev}
+      - WHATSAPP_SERVICE_TOKEN=${WHATSAPP_SERVICE_TOKEN}
       - WHATSAPP_ENABLED=true
       - WHATSAPP_DATA_DIR=/data
       - CHROME_PATH=/usr/bin/chromium
