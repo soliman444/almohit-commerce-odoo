@@ -12,3 +12,4 @@ from . import notification_preview
 from . import account_move
 from . import account_partial_reconcile
 from . import res_config_settings
+from . import whatsapp_account

@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 
@@ -94,23 +95,125 @@ def whatsapp_config(env=None):
 
 def whatsapp_service_status(url, timeout=3):
     """Read-only health of the send service. Never required for business success."""
-    base = (url or "").strip().rstrip("/")
-    if not base:
-        return "Not configured"
-    request = urllib.request.Request(base + "/health", method="GET")
+    return whatsapp_session_info(url=url, timeout=timeout)["status_text"]
+
+
+def _http_json(method, url, token="", timeout=4, payload=None):
+    headers = {}
+    data = None
+    if token:
+        headers["Authorization"] = "Bearer %s" % token
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8") or "{}")
+            return json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as error:
+        try:
+            return json.loads(error.read().decode("utf-8") or "{}")
+        except Exception:
+            return {}
     except Exception:
-        return "Service unreachable"
+        return {}
+
+
+def _normalize_qr(raw):
+    if not raw or not isinstance(raw, str):
+        return None
+    value = raw.strip()
+    if value.lower().startswith("data:") and "," in value:
+        value = value.split(",", 1)[1]
+    compact = re.sub(r"[^A-Za-z0-9+/=]", "", value)
+    return compact or None
+
+
+def qr_img_html(qr):
+    if not qr:
+        return False
+    return (
+        '<div class="mt-2">'
+        '<img src="data:image/png;base64,%s" alt="WhatsApp QR" width="260" height="260" '
+        'style="width:260px;height:260px;background:#fff;padding:8px;'
+        'border:1px solid #ddd;border-radius:8px"/>'
+        "</div>"
+    ) % qr
+
+
+def _session_from_body(body, fallback="Service unreachable"):
+    empty = {
+        "ok": False,
+        "connected": False,
+        "status_text": fallback,
+        "phone": "",
+        "qr": None,
+    }
     if not isinstance(body, dict) or not body.get("ok"):
-        return "Service unreachable"
-    session = (body.get("whatsapp") or {}) if isinstance(body.get("whatsapp"), dict) else {}
+        error = body.get("error") if isinstance(body, dict) else None
+        if isinstance(error, dict) and error.get("message"):
+            empty["status_text"] = error.get("message")
+        return empty
+    session = body.get("whatsapp") if isinstance(body.get("whatsapp"), dict) else {}
+    connected = bool(session.get("connected"))
     status = session.get("status") or "unknown"
     name = session.get("session") or ""
-    if session.get("connected"):
-        return "Connected%s" % ((" (%s)" % name) if name else "")
-    return "Disconnected (%s)" % status
+    phone = (session.get("phone") or "").strip()
+    qr = None if connected else _normalize_qr(body.get("qr") or session.get("qr"))
+    if connected:
+        label = phone or name
+        status_text = "Connected%s" % ((" (%s)" % label) if label else "")
+    else:
+        status_text = "Disconnected (%s)" % status
+    return {
+        "ok": True,
+        "connected": connected,
+        "status_text": status_text,
+        "phone": phone,
+        "qr": qr,
+    }
+
+
+def whatsapp_session_info(env=None, url=None, timeout=6):
+    """Live session for the Odoo account screen. Never required for business success."""
+    cfg = whatsapp_config(env)
+    base = (url or cfg["url"] or "").strip().rstrip("/")
+    token = cfg["token"]
+    if not base:
+        return _session_from_body({}, "Not configured")
+    if token:
+        body = _http_json("GET", base + "/session", token, timeout=timeout)
+        info = _session_from_body(body)
+        if info.get("ok"):
+            return info
+        if (body.get("error") or {}).get("code") == "UNAUTHORIZED":
+            return _session_from_body(body, "Service token rejected")
+    health = _http_json("GET", base + "/health", timeout=min(timeout, 3))
+    return _session_from_body(health, "Service unreachable")
+
+
+def whatsapp_unlink_session(env, timeout=20):
+    """Disconnect the current WhatsApp Web session and wait briefly for a new QR."""
+    cfg = whatsapp_config(env)
+    if not cfg["url"] or not cfg["token"]:
+        return None, "WhatsApp service URL or token is missing."
+    body = _http_json(
+        "POST",
+        cfg["url"] + "/unlink",
+        cfg["token"],
+        timeout=timeout,
+        payload={},
+    )
+    info = _session_from_body(body, "Could not unlink the WhatsApp account.")
+    if not info.get("ok"):
+        return None, info["status_text"]
+    if not info.get("qr") and not info.get("connected"):
+        for _ in range(8):
+            time.sleep(1)
+            info = whatsapp_session_info(env, timeout=4)
+            if info.get("qr") or info.get("connected"):
+                break
+    return info, None
 
 
 def mask_phone(phone):

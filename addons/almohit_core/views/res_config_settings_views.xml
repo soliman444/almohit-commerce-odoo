@@ -19,22 +19,19 @@
                         </setting>
                         <setting
                             id="almohit_whatsapp_account_setting"
-                            string="Account number"
-                            help="Enter the business WhatsApp number that sends Almohit messages. Link it by scanning the QR code printed in the WhatsApp service logs.">
+                            string="Saved number"
+                            help="Last saved business WhatsApp number. Live connection and QR are on WhatsApp Account.">
                             <field name="almohit_whatsapp_account_phone" placeholder="+9665xxxxxxxx" widget="phone"/>
                         </setting>
                         <setting
-                            id="almohit_whatsapp_connection_setting"
-                            string="Connection"
-                            help="Live status of the WhatsApp Web session used to send messages.">
-                            <div class="content-group">
-                                <field name="almohit_whatsapp_connection" readonly="1"/>
-                                <button
-                                    name="action_almohit_whatsapp_check"
-                                    type="object"
-                                    string="Check connection"
-                                    class="btn-link"/>
-                            </div>
+                            id="almohit_whatsapp_live_setting"
+                            string="Live connection"
+                            help="Open the live screen to scan a QR only when WhatsApp is disconnected.">
+                            <button
+                                name="action_open_whatsapp_account"
+                                type="object"
+                                string="Open WhatsApp Account"
+                                class="btn-primary"/>
                         </setting>
                     </block>
                     <block title="Send Service" name="almohit_whatsapp_service_block">

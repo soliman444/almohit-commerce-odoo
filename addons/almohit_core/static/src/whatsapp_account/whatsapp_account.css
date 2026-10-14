@@ -1,0 +1,18 @@
+.o_almohit_whatsapp_account {
+    background: #f8f9fa;
+}
+.o_almohit_whatsapp_card {
+    max-width: 640px;
+    margin: 24px auto;
+    padding: 24px;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+}
+.o_almohit_whatsapp_qr img {
+    display: block;
+    background: #fff;
+    padding: 8px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+}

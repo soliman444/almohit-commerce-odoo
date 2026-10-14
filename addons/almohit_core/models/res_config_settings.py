@@ -6,7 +6,6 @@ from ..services.whatsapp import (
     ICP_SERVICE_TOKEN,
     ICP_SERVICE_URL,
     whatsapp_config,
-    whatsapp_service_status,
 )
 
 
@@ -19,7 +18,7 @@ class ResConfigSettings(models.TransientModel):
     )
     almohit_whatsapp_account_phone = fields.Char(
         string="WhatsApp Account Number",
-        help="Business WhatsApp number used to send Almohit notifications, for example +9665xxxxxxxx. Link the account by scanning the QR code in the WhatsApp service logs.",
+        help="Business WhatsApp number used to send Almohit notifications, for example +9665xxxxxxxx.",
     )
     almohit_whatsapp_service_url = fields.Char(
         string="WhatsApp Service URL",
@@ -28,10 +27,6 @@ class ResConfigSettings(models.TransientModel):
     almohit_whatsapp_service_token = fields.Char(
         string="Service Token",
         help="Shared Bearer token between Odoo and the WhatsApp send service.",
-    )
-    almohit_whatsapp_connection = fields.Char(
-        string="Connection Status",
-        readonly=True,
     )
 
     def get_values(self):
@@ -42,7 +37,6 @@ class ResConfigSettings(models.TransientModel):
             almohit_whatsapp_account_phone=cfg["account_phone"],
             almohit_whatsapp_service_url=cfg["url"],
             almohit_whatsapp_service_token=cfg["token"],
-            almohit_whatsapp_connection=whatsapp_service_status(cfg["url"]),
         )
         return res
 
@@ -57,16 +51,10 @@ class ResConfigSettings(models.TransientModel):
         )
         icp.set_param(ICP_SERVICE_TOKEN, (self.almohit_whatsapp_service_token or "").strip())
 
-    def action_almohit_whatsapp_check(self):
-        self.ensure_one()
-        status = whatsapp_service_status(self.almohit_whatsapp_service_url)
+    def action_open_whatsapp_account(self):
         return {
             "type": "ir.actions.client",
-            "tag": "display_notification",
-            "params": {
-                "title": _("WhatsApp"),
-                "message": status,
-                "type": "success" if status.startswith("Connected") else "warning",
-                "sticky": False,
-            },
+            "tag": "almohit_whatsapp_account",
+            "name": _("WhatsApp Account"),
+            "target": "current",
         }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_almohit_whatsapp_account" model="ir.actions.client">
+        <field name="name">WhatsApp Account</field>
+        <field name="tag">almohit_whatsapp_account</field>
+        <field name="target">current</field>
+    </record>
+
+    <menuitem
+        id="menu_almohit_whatsapp_account"
+        name="WhatsApp Account"
+        parent="menu_almohit_whatsapp"
+        action="action_almohit_whatsapp_account"
+        sequence="1"
+        groups="base.group_system"/>
+</odoo>

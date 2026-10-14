@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { isAuthorized } from "./auth.js";
 import { config } from "./config.js";
-import { getStatus, sendText } from "./whatsapp.js";
+import { getQr, getSession, getStatus, sendText, unlinkWhatsApp } from "./whatsapp.js";
 
 type SendBody = {
   phone?: unknown;
@@ -39,6 +39,28 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || "/", "http://almohit-whatsapp.local");
   if (req.method === "GET" && url.pathname === "/health") {
     json(res, 200, { ok: true, whatsapp: getStatus() });
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/session") {
+    if (!isAuthorized(req)) {
+      fail(res, 401, "UNAUTHORIZED", "Valid bearer token required.");
+      return;
+    }
+    json(res, 200, { ok: true, whatsapp: getSession(), qr: getQr() });
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/unlink") {
+    if (!isAuthorized(req)) {
+      fail(res, 401, "UNAUTHORIZED", "Valid bearer token required.");
+      return;
+    }
+    try {
+      const session = await unlinkWhatsApp();
+      json(res, 200, { ok: true, ...session });
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Unlink failed.";
+      fail(res, 500, "UNLINK_FAILED", messageText);
+    }
     return;
   }
   if (req.method === "POST" && url.pathname === "/send") {
