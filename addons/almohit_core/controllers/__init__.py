@@ -1,4 +1,5 @@
 from . import health
+from . import docs
 from . import currencies
 from . import auth
 from . import trade

@@ -1,0 +1,485 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Almohit App API",
+    "version": "17.0.1.44.0",
+    "description": "Mobile and storefront API on Odoo.\n\n**Auth:** POST `/almohit/api/auth/login`, then send `Authorization: Bearer <session_id>` (same value as the `session_id` cookie). Public catalog routes do not need a token.\n\n**Envelope:** success `{ ok: true, data }` · error `{ ok: false, error: { code, message } }`.\n\nCart and checkout require an approved merchant/buyer/distributor, not a marketer."
+  },
+  "servers": [
+    { "url": "/", "description": "This Odoo server" }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Catalog" },
+    { "name": "Auth" },
+    { "name": "Trade" },
+    { "name": "Cart" },
+    { "name": "Addresses" },
+    { "name": "Orders" },
+    { "name": "Invoices" },
+    { "name": "Payments" },
+    { "name": "Deliveries" },
+    { "name": "Marketer" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "session_id returned by login or /auth/me"
+      }
+    },
+    "schemas": {
+      "Success": {
+        "type": "object",
+        "required": ["ok", "data"],
+        "properties": {
+          "ok": { "type": "boolean", "enum": [true] },
+          "data": true
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["ok", "error"],
+        "properties": {
+          "ok": { "type": "boolean", "enum": [false] },
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "example": "UNAUTHENTICATED" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      },
+      "AuthUser": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": "integer" },
+          "partner_id": { "type": "integer" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "phone": { "type": "string", "nullable": true },
+          "trade_status": { "type": "string", "example": "normal" },
+          "role": { "type": "string", "enum": ["merchant", "buyer", "distributor", "marketer"] },
+          "is_staff": { "type": "boolean" },
+          "session_id": { "type": "string", "description": "Present on login and /auth/me. Use as Bearer token." },
+          "payment_term": { "type": "object", "nullable": true },
+          "price_group": { "type": "object", "nullable": true }
+        }
+      },
+      "LoginBody": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "RegisterBody": {
+        "type": "object",
+        "required": ["name", "email", "password"],
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 8 },
+          "phone": { "type": "string" },
+          "role": { "type": "string", "enum": ["merchant", "buyer", "distributor", "marketer"], "default": "merchant" }
+        }
+      },
+      "TradeApplicationBody": {
+        "type": "object",
+        "required": ["company_name"],
+        "properties": {
+          "company_name": { "type": "string" },
+          "payment_method": { "type": "string", "enum": ["bank_transfer", "cash", "both"] },
+          "shop_image_base64": { "type": "string" },
+          "shop_image_content_type": { "type": "string", "example": "image/jpeg" }
+        }
+      },
+      "CartItemBody": {
+        "type": "object",
+        "required": ["product_id", "quantity"],
+        "properties": {
+          "product_id": { "type": "integer", "description": "product.product variant id" },
+          "quantity": { "type": "number" }
+        }
+      },
+      "AddressBody": {
+        "type": "object",
+        "required": ["type", "name", "street", "city"],
+        "properties": {
+          "type": { "type": "string", "enum": ["delivery", "invoice"] },
+          "name": { "type": "string" },
+          "street": { "type": "string" },
+          "street2": { "type": "string" },
+          "city": { "type": "string" },
+          "zip": { "type": "string" },
+          "phone": { "type": "string" },
+          "country_id": { "type": "integer" },
+          "country_code": { "type": "string", "example": "MY" },
+          "state_id": { "type": "integer" }
+        }
+      },
+      "CheckoutBody": {
+        "type": "object",
+        "required": ["shipping_address_id", "invoice_address_id"],
+        "properties": {
+          "shipping_address_id": { "type": "integer" },
+          "invoice_address_id": { "type": "integer" }
+        }
+      },
+      "PayInvoiceBody": {
+        "type": "object",
+        "required": ["provider_id"],
+        "properties": {
+          "provider_id": { "type": "integer" }
+        }
+      },
+      "DeliveryStatusBody": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "string" }
+        }
+      },
+      "MarketerMerchantBody": {
+        "type": "object",
+        "required": ["name", "email", "password", "company_name"],
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 8 },
+          "phone": { "type": "string" },
+          "company_name": { "type": "string" },
+          "payment_method": { "type": "string", "enum": ["bank_transfer", "cash", "both"] },
+          "shop_image_base64": { "type": "string" },
+          "shop_image_content_type": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/almohit/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Service health",
+        "security": [],
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Success" } } } }
+        }
+      }
+    },
+    "/almohit/api/currencies": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Display currencies",
+        "security": [],
+        "responses": { "200": { "description": "Currency catalog" } }
+      }
+    },
+    "/almohit/api/products": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "List saleable products",
+        "description": "Public. Prices are included only for an authenticated approved customer.",
+        "security": [],
+        "responses": { "200": { "description": "Product list" } }
+      }
+    },
+    "/almohit/api/products/{product_id}": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Product detail",
+        "security": [],
+        "parameters": [{ "name": "product_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Product" },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/almohit/api/categories": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "List categories that have saleable products",
+        "security": [],
+        "responses": { "200": { "description": "Categories" } }
+      }
+    },
+    "/almohit/api/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register portal user",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterBody" } } } },
+        "responses": {
+          "201": { "description": "Created user (no session yet — call login)" },
+          "409": { "description": "Email already exists" }
+        }
+      }
+    },
+    "/almohit/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login",
+        "description": "Returns `data.session_id`. Click Authorize and paste it as Bearer.",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginBody" } } } },
+        "responses": {
+          "200": { "description": "User + session_id" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/almohit/api/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Current user",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "User + session_id" },
+          "401": { "description": "Not signed in" }
+        }
+      }
+    },
+    "/almohit/api/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Logout",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "logged_out" } }
+      }
+    },
+    "/almohit/api/trade/applications": {
+      "post": {
+        "tags": ["Trade"],
+        "summary": "Submit wholesale application",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TradeApplicationBody" } } } },
+        "responses": { "201": { "description": "Application created" }, "409": { "description": "Already pending or approved" } }
+      }
+    },
+    "/almohit/api/trade/application": {
+      "get": {
+        "tags": ["Trade"],
+        "summary": "Latest own application",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Application or null" } }
+      }
+    },
+    "/almohit/api/cart": {
+      "get": {
+        "tags": ["Cart"],
+        "summary": "Current cart",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Cart" }, "403": { "description": "Not approved / marketer" } }
+      }
+    },
+    "/almohit/api/cart/items": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Add line",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CartItemBody" } } } },
+        "responses": { "200": { "description": "Updated cart" } }
+      }
+    },
+    "/almohit/api/cart/items/{line_id}": {
+      "patch": {
+        "tags": ["Cart"],
+        "summary": "Update quantity (0 removes the line)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "line_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "quantity": { "type": "number" } } } } } },
+        "responses": { "200": { "description": "Updated cart" } }
+      },
+      "delete": {
+        "tags": ["Cart"],
+        "summary": "Remove line",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "line_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Updated cart" } }
+      }
+    },
+    "/almohit/api/cart/clear": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Clear cart",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Empty cart" } }
+      }
+    },
+    "/almohit/api/addresses": {
+      "get": {
+        "tags": ["Addresses"],
+        "summary": "List addresses",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Addresses" } }
+      },
+      "post": {
+        "tags": ["Addresses"],
+        "summary": "Create address",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddressBody" } } } },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/almohit/api/addresses/{address_id}": {
+      "patch": {
+        "tags": ["Addresses"],
+        "summary": "Update address",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "address_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddressBody" } } } },
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "tags": ["Addresses"],
+        "summary": "Delete address",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "address_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/almohit/api/checkout": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Place order from cart",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CheckoutBody" } } } },
+        "responses": { "200": { "description": "Confirmed order" } }
+      }
+    },
+    "/almohit/api/orders": {
+      "get": {
+        "tags": ["Orders"],
+        "summary": "List own orders",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Orders" } }
+      }
+    },
+    "/almohit/api/orders/{order_id}": {
+      "get": {
+        "tags": ["Orders"],
+        "summary": "Order detail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "order_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Order" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/almohit/api/invoices": {
+      "get": {
+        "tags": ["Invoices"],
+        "summary": "List own invoices",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Invoices" } }
+      }
+    },
+    "/almohit/api/invoices/{invoice_id}": {
+      "get": {
+        "tags": ["Invoices"],
+        "summary": "Invoice detail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "invoice_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Invoice" } }
+      }
+    },
+    "/almohit/api/invoices/{invoice_id}/payment": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Start online payment for an invoice",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "invoice_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PayInvoiceBody" } } } },
+        "responses": { "200": { "description": "Payment transaction + redirect flow" } }
+      }
+    },
+    "/almohit/api/payments": {
+      "get": {
+        "tags": ["Payments"],
+        "summary": "List recorded payments",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Payments" } }
+      }
+    },
+    "/almohit/api/payments/{payment_id}": {
+      "get": {
+        "tags": ["Payments"],
+        "summary": "Payment detail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "payment_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Payment" } }
+      }
+    },
+    "/almohit/api/payment/providers": {
+      "get": {
+        "tags": ["Payments"],
+        "summary": "Online payment providers",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "invoice_id", "in": "query", "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Providers" } }
+      }
+    },
+    "/almohit/api/payment/transactions": {
+      "get": {
+        "tags": ["Payments"],
+        "summary": "Online payment transactions",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Transactions" } }
+      }
+    },
+    "/almohit/api/payment/transactions/{transaction_id}": {
+      "get": {
+        "tags": ["Payments"],
+        "summary": "Transaction detail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "transaction_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Transaction" } }
+      }
+    },
+    "/almohit/api/deliveries": {
+      "get": {
+        "tags": ["Deliveries"],
+        "summary": "Assigned deliveries (distributor only)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Pickings" }, "403": { "description": "Not a distributor" } }
+      }
+    },
+    "/almohit/api/deliveries/{picking_id}": {
+      "get": {
+        "tags": ["Deliveries"],
+        "summary": "Delivery detail",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "picking_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Picking" } }
+      }
+    },
+    "/almohit/api/deliveries/{picking_id}/status": {
+      "post": {
+        "tags": ["Deliveries"],
+        "summary": "Update delivery status",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "picking_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeliveryStatusBody" } } } },
+        "responses": { "200": { "description": "Updated picking" } }
+      }
+    },
+    "/almohit/api/marketer/merchants": {
+      "get": {
+        "tags": ["Marketer"],
+        "summary": "Recruited merchants",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "description": "Applications" }, "403": { "description": "Not an approved marketer" } }
+      },
+      "post": {
+        "tags": ["Marketer"],
+        "summary": "Recruit a merchant",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MarketerMerchantBody" } } } },
+        "responses": { "201": { "description": "Created application" } }
+      }
+    }
+  }
+}
