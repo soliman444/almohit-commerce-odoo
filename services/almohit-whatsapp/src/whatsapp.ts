@@ -26,7 +26,6 @@ const CONNECTED_STATUSES = new Set([
   "syncing",
   "connected",
   "open",
-  "pairing",
 ]);
 
 let client: WhatsAppClient | null = null;
@@ -52,22 +51,51 @@ function isConnectedStatus(status: string): boolean {
   if (CONNECTED_STATUSES.has(compact)) return true;
   return ["main", "syncing", "connected", "inchat"].some((name) => compact.includes(name));
 }
+function isDisconnectedStatus(status: string): boolean {
+  const compact = String(status || "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+
+  return [
+    "qr",
+    "notlogged",
+    "unpaired",
+    "unpairedidle",
+    "disconnected",
+    "disconnectedmobile",
+    "browserclose",
+    "stopped",
+    "error",
+    "waitingqr",
+  ].some((name) => compact.includes(name));
+}
 
 function markStatus(status: string, { force = false } = {}) {
-  const nextConnected = isConnectedStatus(status);
-  if (connected && !nextConnected && !force) {
+  const explicitDisconnected = isDisconnectedStatus(status);
+
+  const nextConnected = explicitDisconnected
+    ? false
+    : isConnectedStatus(status);
+
+  if (connected && !nextConnected && !force && !explicitDisconnected) {
     return;
   }
+
   sessionStatus = status;
   connected = nextConnected;
+
   if (connected) {
     lastQr = null;
+
     if (qrDropTimer) {
       clearTimeout(qrDropTimer);
       qrDropTimer = null;
     }
   }
-  console.log(`[whatsapp] session=${config.session} status=${status} connected=${connected}`);
+
+  console.log(
+    `[whatsapp] session=${config.session} status=${status} connected=${connected}`
+  );
 }
 
 function stripQr(value: string): string {
@@ -132,24 +160,41 @@ async function capturePhone() {
 async function refreshConnection(): Promise<boolean> {
   const current = client;
   if (!current) return false;
+
   try {
-    const isConn = current.isConnected ? await current.isConnected() : false;
+    const state = current.getConnectionState
+      ? await current.getConnectionState()
+      : "";
+
+    const display = displayFromState(state);
+
+    if (display) {
+      if (isDisconnectedStatus(display)) {
+        markStatus(display, { force: true });
+        return false;
+      }
+
+      if (isConnectedStatus(display)) {
+        markStatus(display || "inChat");
+        await capturePhone();
+        return true;
+      }
+    }
+
+    const isConn = current.isConnected
+      ? await current.isConnected()
+      : false;
+
     if (isConn) {
       markStatus("inChat");
       await capturePhone();
       return true;
     }
-    const state = current.getConnectionState ? await current.getConnectionState() : "";
-    const display = displayFromState(state);
-    if (isConnectedStatus(display)) {
-      markStatus(display || "inChat");
-      await capturePhone();
-      return true;
-    }
+
+    return false;
   } catch {
-    /* polling is best-effort */
+    return false;
   }
-  return false;
 }
 
 function stopPolling() {
@@ -193,10 +238,13 @@ function handleInterfaceState(state: unknown) {
   }, 8000);
 }
 
-async function attachClientListeners(created: WhatsAppClient) {
+async function attachClientListeners(created: WhatsAppClient, gen: number) {
   try {
     if (created.onInterfaceChange) {
-      await created.onInterfaceChange((state) => handleInterfaceState(state));
+      await created.onInterfaceChange((state) => {
+        if (gen !== generation) return;
+        handleInterfaceState(state);
+      });
     }
   } catch {
     /* optional */
@@ -204,9 +252,17 @@ async function attachClientListeners(created: WhatsAppClient) {
   try {
     if (created.onStateChange) {
       await created.onStateChange((state) => {
+        if (gen !== generation) return;
+
         const display = displayFromState(state);
-        if (display) markStatus(display);
-        if (connected) void capturePhone();
+
+        if (display) {
+          markStatus(display);
+        }
+
+        if (connected) {
+          void capturePhone();
+        }
       });
     }
   } catch {
@@ -297,13 +353,21 @@ export async function startWhatsApp(): Promise<void> {
         ],
       },
       catchQR: (base64) => {
+        if (gen !== generation) return;
         if (connected) return;
+
         lastQr = stripQr(base64 || "") || lastQr;
         markStatus("notLogged", { force: true });
       },
+
       statusFind: (status) => {
+        if (gen !== generation) return;
+
         markStatus(String(status));
-        if (connected) void capturePhone();
+
+        if (connected) {
+          void capturePhone();
+        }
       },
     })) as WhatsAppClient;
     if (gen !== generation) {
@@ -311,7 +375,7 @@ export async function startWhatsApp(): Promise<void> {
       return;
     }
     client = created;
-    await attachClientListeners(created);
+    await attachClientListeners(created, gen);
     startPolling();
     await refreshConnection();
     if (sessionStatus === "starting") markStatus("browserReady");
