@@ -1,3 +1,5 @@
+import math
+
 from odoo import http
 from odoo.http import request
 
@@ -9,6 +11,8 @@ from ..services.catalog import (
     pricelist_prices,
     saleable_template,
     saleable_templates,
+    saleable_brands,
+    serialize_brand,
     serialize_category,
     serialize_template,
     template_in_stock,
@@ -45,6 +49,31 @@ _LIST_VARIANT_KEYS = (
     "price",
 )
 _LIST_ATTRIBUTE_KEYS = ("attribute", "value")
+
+
+def _parse_moq_bound(raw, name):
+    if isinstance(raw, (list, tuple)):
+        raw = raw[0] if raw else ""
+    if raw in (None, ""):
+        return None, None
+    text = str(raw).strip()
+    if text == "":
+        return None, None
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        return None, error(
+            "INVALID_FILTER",
+            "%s must be a number >= 0." % name,
+            400,
+        )
+    if not math.isfinite(value) or value < 0:
+        return None, error(
+            "INVALID_FILTER",
+            "%s must be a number >= 0." % name,
+            400,
+        )
+    return value, None
 
 
 def _allowlisted_mapping(payload, keys):
@@ -116,9 +145,11 @@ class AlmohitProductsController(http.Controller):
         raw_category_id = kwargs.get("category_id")
         raw_brand_id = kwargs.get("brand_id")
         raw_in_stock = kwargs.get("in_stock")
+        raw_include_children = kwargs.get("include_children")
         category_id = None
         brand_id = None
         in_stock = None
+        include_children = False
         if raw_category_id not in (None, ""):
             try:
                 category_id = int(raw_category_id)
@@ -158,6 +189,34 @@ class AlmohitProductsController(http.Controller):
                     400,
                 )
             in_stock = in_stock_value == "true"
+        if raw_include_children not in (None, ""):
+            include_children_value = str(raw_include_children).lower()
+            if include_children_value not in ("true", "false"):
+                return error(
+                    "INVALID_FILTER",
+                    "include_children must be true or false.",
+                    400,
+                )
+            include_children = include_children_value == "true"
+            if category_id is None:
+                return error(
+                    "INVALID_FILTER",
+                    "include_children requires category_id.",
+                    400,
+                )
+
+        min_moq, min_err = _parse_moq_bound(kwargs.get("min_moq"), "min_moq")
+        if min_err:
+            return min_err
+        max_moq, max_err = _parse_moq_bound(kwargs.get("max_moq"), "max_moq")
+        if max_err:
+            return max_err
+        if min_moq is not None and max_moq is not None and min_moq > max_moq:
+            return error(
+                "INVALID_FILTER",
+                "min_moq must be less than or equal to max_moq.",
+                400,
+            )
 
         raw_sort = kwargs.get("sort")
         order = "name, id"
@@ -166,10 +225,14 @@ class AlmohitProductsController(http.Controller):
                 order = "name asc, id asc"
             elif raw_sort == "name_desc":
                 order = "name desc, id desc"
+            elif raw_sort == "newest":
+                order = "create_date desc, id desc"
+            elif raw_sort == "oldest":
+                order = "create_date asc, id asc"
             else:
                 return error(
                     "INVALID_SORT",
-                    "sort must be one of: name_asc, name_desc.",
+                    "sort must be one of: name_asc, name_desc, newest, oldest.",
                     400,
                 )
 
@@ -182,7 +245,10 @@ class AlmohitProductsController(http.Controller):
         templates_model = request.env["product.template"].sudo()
         domain = list(SALEABLE_DOMAIN)
         if category_id is not None:
-            domain.append(("categ_id", "=", category_id))
+            if include_children:
+                domain.append(("categ_id", "child_of", category_id))
+            else:
+                domain.append(("categ_id", "=", category_id))
         if brand_id is not None:
             domain.append(("almohit_brand_id", "=", brand_id))
             domain.append(("almohit_brand_id", "=", brand_id))
@@ -198,6 +264,10 @@ class AlmohitProductsController(http.Controller):
                 ("product_variant_ids.default_code", "ilike", q),
                 ("product_variant_ids.barcode", "ilike", q),
             ]
+        if min_moq is not None:
+            domain.append(("almohit_min_order_qty", ">=", min_moq))
+        if max_moq is not None:
+            domain.append(("almohit_min_order_qty", "<=", max_moq))
         if in_stock is None:
             total = templates_model.search_count(domain)
             templates = templates_model.search(
@@ -285,4 +355,17 @@ class AlmohitProductsController(http.Controller):
         return success([
             serialize_category(categ)
             for categ in categories
+        ])
+
+    @http.route(
+        "/almohit/api/brands",
+        type="http",
+        auth="public",
+        methods=["GET"],
+        csrf=False,
+    )
+    def list_brands(self, **kwargs):
+        return success([
+            serialize_brand(brand)
+            for brand in saleable_brands(request.env)
         ])

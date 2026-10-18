@@ -188,3 +188,15 @@ def serialize_category(category):
         "complete_name": category.complete_name,
         "parent_id": category.parent_id.id or None,
     }
+
+
+def serialize_brand(brand):
+    return {
+        "id": brand.id,
+        "name": brand.name,
+    }
+
+
+def saleable_brands(env):
+    brands = saleable_templates(env).mapped("almohit_brand_id")
+    return brands.sorted(key=lambda brand: (brand.name or "", brand.id))

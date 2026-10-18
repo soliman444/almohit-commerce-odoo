@@ -3,7 +3,7 @@
   "info": {
     "title": "Almohit App API",
     "version": "17.0.1.45.0",
-    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.45.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Buyer and merchant: cart, checkout, orders, invoices, payments, addresses. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}` and `GET /almohit/api/categories` are not paginated (`categories` remains a raw array in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand: 2 MB. Shop image: 4 MB. Max 2000×2000. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
+    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.45.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Buyer and merchant: cart, checkout, orders, invoices, payments, addresses. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand: 2 MB. Shop image: 4 MB. Max 2000×2000. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
   },
   "servers": [
     { "url": "/", "description": "This Odoo server" }
@@ -563,10 +563,13 @@
           { "$ref": "#/components/parameters/Page" },
           { "$ref": "#/components/parameters/PageSize" },
           { "$ref": "#/components/parameters/Q" },
-          { "name": "category_id", "in": "query", "schema": { "type": "integer", "minimum": 1 }, "description": "Positive integer. Else 400 INVALID_FILTER." },
+          { "name": "category_id", "in": "query", "schema": { "type": "integer", "minimum": 1 }, "description": "Positive integer. Else 400 INVALID_FILTER. Exact `categ_id` match unless `include_children=true`." },
+          { "name": "include_children", "in": "query", "schema": { "type": "string", "enum": ["true", "false"] }, "description": "Default false. Requires `category_id`. `true` uses Odoo `categ_id child_of` (selected category and descendants). `false` or omitted keeps exact `categ_id =`. Else 400 INVALID_FILTER. Sending `include_children` without `category_id` is 400 INVALID_FILTER." },
           { "name": "brand_id", "in": "query", "schema": { "type": "integer", "minimum": 1 }, "description": "Positive integer. Else 400 INVALID_FILTER." },
           { "name": "in_stock", "in": "query", "schema": { "type": "string", "enum": ["true", "false"] }, "description": "Else 400 INVALID_FILTER." },
-          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["name_asc", "name_desc"] }, "description": "Default name, id. Else 400 INVALID_SORT." }
+          { "name": "min_moq", "in": "query", "schema": { "type": "number", "minimum": 0 }, "description": "Inclusive. Products with `almohit_min_order_qty >= min_moq`. Number >= 0. Else 400 INVALID_FILTER. If greater than `max_moq`, 400 INVALID_FILTER." },
+          { "name": "max_moq", "in": "query", "schema": { "type": "number", "minimum": 0 }, "description": "Inclusive. Products with `almohit_min_order_qty <= max_moq`. Number >= 0. Else 400 INVALID_FILTER." },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["name_asc", "name_desc", "newest", "oldest"] }, "description": "Default `name, id`. `newest`/`oldest` use `create_date` then `id`. Else 400 INVALID_SORT." }
         ],
         "responses": {
           "200": {
@@ -614,6 +617,17 @@
         "security": [],
         "responses": {
           "200": { "description": "`data` is an array of `{ id, name, complete_name, parent_id }`." }
+        }
+      }
+    },
+    "/almohit/api/brands": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "Brands used by saleable products",
+        "description": "Public. Returns `{ id, name }` for `almohit.product.brand` records assigned to at least one active `sale_ok` product template. Unused brands are omitted. Ordered name asc, id asc. Not paginated.",
+        "security": [],
+        "responses": {
+          "200": { "description": "`data` is an array of `{ id, name }`." }
         }
       }
     },
