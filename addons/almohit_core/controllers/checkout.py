@@ -4,7 +4,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import error, success
-from ..services.customer import require_approved_customer
+from ..services.customer import require_almohit_group, require_approved_customer
 from ..services.orders import checkout_cart, serialize_order
 
 
@@ -18,12 +18,50 @@ class AlmohitCheckoutController(http.Controller):
         csrf=False,
     )
     def checkout(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_approved_customer()
         if err:
             return err
         payload, err = self._json_payload()
         if err:
             return err
+
+        extra_keys = set(payload) - {"shipping_address_id", "invoice_address_id"}
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "Only shipping_address_id and invoice_address_id are allowed.",
+                400,
+            )
+
+        shipping_address_id = payload.get("shipping_address_id")
+        if (
+            isinstance(shipping_address_id, bool)
+            or not isinstance(shipping_address_id, int)
+            or shipping_address_id < 1
+        ):
+            return error(
+                "INVALID_CHECKOUT",
+                "shipping_address_id must be a positive integer.",
+                400,
+            )
+
+        invoice_address_id = payload.get("invoice_address_id")
+        if (
+            isinstance(invoice_address_id, bool)
+            or not isinstance(invoice_address_id, int)
+            or invoice_address_id < 1
+        ):
+            return error(
+                "INVALID_CHECKOUT",
+                "invoice_address_id must be a positive integer.",
+                400,
+            )
 
         order, checkout_err = checkout_cart(partner, payload)
         if checkout_err:

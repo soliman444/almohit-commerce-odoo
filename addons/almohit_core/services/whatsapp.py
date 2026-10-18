@@ -119,6 +119,170 @@ def _http_json(method, url, token="", timeout=4, payload=None):
         return {}
 
 
+_SECRET_RE = re.compile(
+    r"(?i)(bearer\s+)[A-Za-z0-9._\-]+|data:[^;]+;base64,[A-Za-z0-9+/=\s]+"
+)
+_SESSION_STATE = {}
+_DISCONNECTED_STATUSES = {
+    "qr",
+    "notlogged",
+    "unpaired",
+    "unpairedidle",
+    "disconnected",
+    "disconnectedmobile",
+    "browserclose",
+    "stopped",
+    "waitingqr",
+    "waiting_qr",
+}
+_SESSION_LOST_STATUSES = {
+    "notlogged",
+    "unpaired",
+    "unpairedidle",
+    "disconnected",
+    "disconnectedmobile",
+    "browserclose",
+}
+_SERVICE_ERROR_CODES = {"UNAUTHORIZED"}
+_SESSION_ERROR_CODES = {"UNLINK_FAILED", "INTERNAL_ERROR"}
+_FALLBACK_STATUS = {
+    "Not configured": "not_configured",
+    "Service token rejected": "unauthorized",
+    "Service unreachable": "unreachable",
+    "Could not unlink the WhatsApp account.": "unlink_failed",
+}
+
+
+def _compact_status(value):
+    return re.sub(r"[^a-z]", "", str(value or "").lower())
+
+
+def _safe_log_text(value, limit=250):
+    text = _SECRET_RE.sub("[redacted]", str(value or "").strip())
+    if len(text) > limit:
+        return text[:limit]
+    return text
+
+
+def _session_db_state(env):
+    if env is None:
+        return None
+    return _SESSION_STATE.setdefault(
+        env.cr.dbname,
+        {"fp": None, "connected": False, "unlink_pending": False},
+    )
+
+
+def _error_category(info):
+    code = str(info.get("error_code") or "")
+    raw = _compact_status(info.get("raw_status"))
+    if code in _SERVICE_ERROR_CODES or raw in ("unauthorized", "notconfigured", "unreachable"):
+        return "service_error"
+    if code in _SESSION_ERROR_CODES or raw in ("error", "unlinkfailed"):
+        return "session_error"
+    if info.get("ok"):
+        return None
+    if raw == "error" or code:
+        return "session_error" if code in _SESSION_ERROR_CODES or raw == "error" else "service_error"
+    return "service_error"
+
+
+def _session_fingerprint(info):
+    err = _error_category(info)
+    connected = bool(info.get("connected"))
+    has_qr = bool(info.get("qr"))
+    if err:
+        return (False, err, False, str(info.get("error_code") or info.get("raw_status") or err))
+    if connected:
+        return (True, "connected", False, None)
+    raw = _compact_status(info.get("raw_status"))
+    waiting = has_qr or raw in ("waitingqr", "waiting_qr", "notlogged", "qr")
+    if waiting:
+        return (False, "waiting_qr", has_qr, None)
+    if raw in _DISCONNECTED_STATUSES:
+        return (False, "disconnected", False, None)
+    return (False, raw or "unknown", has_qr, None)
+
+
+def _session_event_type(info, state):
+    err = _error_category(info)
+    if err:
+        return err
+    connected = bool(info.get("connected"))
+    if state.get("unlink_pending") and not connected:
+        return "unlinked"
+    if connected:
+        return "connected"
+    raw = _compact_status(info.get("raw_status"))
+    if state.get("connected"):
+        if raw in _SESSION_LOST_STATUSES:
+            return "session_lost"
+        return "disconnected"
+    if info.get("qr"):
+        return "qr_ready"
+    if raw in _DISCONNECTED_STATUSES:
+        return "disconnected"
+    return None
+
+
+def _create_session_log(env, event_type, info, phone=""):
+    if env is None or not event_type:
+        return
+    try:
+        with env.cr.savepoint():
+            env["almohit.whatsapp.session.log"].sudo().create({
+                "event_type": event_type,
+                "status": _safe_log_text(info.get("raw_status") or info.get("error_code") or "", 64),
+                "message": _safe_log_text(info.get("status_text") or "", 250),
+                "connected": bool(info.get("connected")),
+                "phone": _safe_log_text(phone or info.get("phone") or "", 32),
+            })
+    except Exception:
+        _logger.exception("whatsapp session log failed event=%s", event_type)
+
+
+def _record_session_snapshot(env, info):
+    if env is None or not isinstance(info, dict):
+        return
+    state = _session_db_state(env)
+    if state is None:
+        return
+    fingerprint = _session_fingerprint(info)
+    if fingerprint == state["fp"]:
+        return
+    event_type = _session_event_type(info, state)
+    phone = (info.get("phone") or "").strip()
+    if not phone:
+        phone = (whatsapp_config(env).get("account_phone") or "").strip()
+    if event_type:
+        _create_session_log(env, event_type, info, phone)
+    state["fp"] = fingerprint
+    state["connected"] = bool(info.get("connected"))
+    if event_type == "unlinked" or info.get("connected"):
+        state["unlink_pending"] = False
+
+
+def _record_unlink_requested(env):
+    if env is None:
+        return
+    state = _session_db_state(env)
+    if state is not None:
+        state["unlink_pending"] = True
+    cfg = whatsapp_config(env)
+    _create_session_log(
+        env,
+        "unlink_requested",
+        {
+            "raw_status": "",
+            "error_code": "",
+            "status_text": "Unlink requested.",
+            "connected": False,
+            "phone": cfg.get("account_phone") or "",
+        },
+        cfg.get("account_phone") or "",
+    )
+
+
 def _normalize_qr(raw):
     if not raw or not isinstance(raw, str):
         return None
@@ -142,15 +306,20 @@ def qr_img_html(qr):
 
 
 def _session_from_body(body, fallback="Service unreachable"):
+    if not isinstance(body, dict):
+        body = {}
+    error = body.get("error") if isinstance(body, dict) else None
+    error_code = error.get("code") if isinstance(error, dict) else None
     empty = {
         "ok": False,
         "connected": False,
         "status_text": fallback,
         "phone": "",
         "qr": None,
+        "raw_status": error_code or _FALLBACK_STATUS.get(fallback, "unreachable"),
+        "error_code": error_code,
     }
     if not isinstance(body, dict) or not body.get("ok"):
-        error = body.get("error") if isinstance(body, dict) else None
         if isinstance(error, dict) and error.get("message"):
             empty["status_text"] = error.get("message")
         return empty
@@ -171,6 +340,8 @@ def _session_from_body(body, fallback="Service unreachable"):
         "status_text": status_text,
         "phone": phone,
         "qr": qr,
+        "raw_status": status,
+        "error_code": None,
     }
 
 
@@ -180,23 +351,34 @@ def whatsapp_session_info(env=None, url=None, timeout=6):
     base = (url or cfg["url"] or "").strip().rstrip("/")
     token = cfg["token"]
     if not base:
-        return _session_from_body({}, "Not configured")
+        info = _session_from_body({}, "Not configured")
+        _record_session_snapshot(env, info)
+        return info
     if token:
         body = _http_json("GET", base + "/session", token, timeout=timeout)
         info = _session_from_body(body)
         if info.get("ok"):
+            _record_session_snapshot(env, info)
             return info
         if (body.get("error") or {}).get("code") == "UNAUTHORIZED":
-            return _session_from_body(body, "Service token rejected")
+            info = _session_from_body(body, "Service token rejected")
+            _record_session_snapshot(env, info)
+            return info
     health = _http_json("GET", base + "/health", timeout=min(timeout, 3))
-    return _session_from_body(health, "Service unreachable")
+    info = _session_from_body(health, "Service unreachable")
+    _record_session_snapshot(env, info)
+    return info
 
 
 def whatsapp_unlink_session(env, timeout=20):
     """Disconnect the current WhatsApp Web session and wait briefly for a new QR."""
     cfg = whatsapp_config(env)
     if not cfg["url"] or not cfg["token"]:
+        info = _session_from_body({}, "Not configured")
+        info["status_text"] = "WhatsApp service URL or token is missing."
+        _record_session_snapshot(env, info)
         return None, "WhatsApp service URL or token is missing."
+    _record_unlink_requested(env)
     body = _http_json(
         "POST",
         cfg["url"] + "/unlink",
@@ -206,7 +388,9 @@ def whatsapp_unlink_session(env, timeout=20):
     )
     info = _session_from_body(body, "Could not unlink the WhatsApp account.")
     if not info.get("ok"):
+        _record_session_snapshot(env, info)
         return None, info["status_text"]
+    _record_session_snapshot(env, info)
     if not info.get("qr") and not info.get("connected"):
         for _ in range(8):
             time.sleep(1)

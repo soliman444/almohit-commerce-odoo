@@ -1,12 +1,13 @@
 from odoo import http
 from odoo.http import request
 
-from ..services.api import error, read_json_body, success
-from ..services.customer import require_customer_partner
+from ..services.api import error, paginated_success, parse_pagination, read_json_body, success
+from ..services.customer import require_almohit_group, require_customer_partner
 from ..services.invoices import owned_customer_invoice, search_customer_invoices
 from ..services.online_payments import (
     compatible_providers,
     owned_customer_transaction,
+    parse_transaction_list_params,
     serialize_provider,
     serialize_transaction,
     transactions_for_invoices,
@@ -24,6 +25,12 @@ class AlmohitOnlinePaymentController(http.Controller):
         csrf=False,
     )
     def list_providers(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
         if err:
             return err
@@ -48,16 +55,34 @@ class AlmohitOnlinePaymentController(http.Controller):
         csrf=False,
     )
     def list_transactions(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
+        if err:
+            return err
+        page, page_size, err = parse_pagination(kwargs)
+        if err:
+            return err
+        extra, order, err = parse_transaction_list_params(kwargs)
         if err:
             return err
         orders = search_confirmed_orders(request.env, partner)
         invoices = search_customer_invoices(orders)
         txs = transactions_for_invoices(invoices)
-        return success([
-            serialize_transaction(tx, invoices)
-            for tx in txs
-        ])
+        txs = txs.search(
+            [("id", "in", txs.ids)] + extra,
+            order=order,
+        )
+        return paginated_success(
+            txs,
+            lambda tx: serialize_transaction(tx, invoices),
+            page,
+            page_size,
+        )
 
     @http.route(
         "/almohit/api/payment/transactions/<int:transaction_id>",
@@ -67,6 +92,12 @@ class AlmohitOnlinePaymentController(http.Controller):
         csrf=False,
     )
     def get_transaction(self, transaction_id, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
         if err:
             return err

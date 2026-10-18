@@ -1,8 +1,8 @@
 from odoo import http
 from odoo.http import request
 
-from ..services.api import error, read_json_body, success
-from ..services.customer import require_marketer_partner
+from ..services.api import error, paginated_success, parse_pagination, read_json_body, success
+from ..services.customer import require_almohit_group, require_marketer_partner
 from ..services.trade import (
     APPLICATION_ALREADY_PENDING,
     COMPANY_NAME_REQUIRED,
@@ -13,7 +13,8 @@ from ..services.trade import (
     NAME_REQUIRED,
     PASSWORD_TOO_SHORT,
     create_recruited_merchant,
-    list_recruited_merchants,
+    parse_merchant_list_params,
+    search_recruited_merchants,
     serialize_application,
 )
 
@@ -28,10 +29,31 @@ class AlmohitMarketerController(http.Controller):
         csrf=False,
     )
     def list_merchants(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_marketer",
+        )
+        if err:
+            return err
         partner, err = require_marketer_partner()
         if err:
             return err
-        return success(list_recruited_merchants(request.env, partner))
+        page, page_size, err = parse_pagination(kwargs)
+        if err:
+            return err
+        extra, order, err = parse_merchant_list_params(kwargs)
+        if err:
+            return err
+        merchants = search_recruited_merchants(request.env, partner)
+        merchants = merchants.search(
+            [("id", "in", merchants.ids)] + extra,
+            order=order,
+        )
+        return paginated_success(
+            merchants,
+            serialize_application,
+            page,
+            page_size,
+        )
 
     @http.route(
         "/almohit/api/marketer/merchants",
@@ -41,13 +63,47 @@ class AlmohitMarketerController(http.Controller):
         csrf=False,
     )
     def create_merchant(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_marketer",
+        )
+        if err:
+            return err
         partner, err = require_marketer_partner()
         if err:
             return err
         payload, err = read_json_body()
         if err:
             return err
+
+        extra_keys = set(payload) - {
+            "name",
+            "email",
+            "password",
+            "phone",
+            "company_name",
+            "tax_number",
+            "business_type",
+            "street",
+            "address",
+            "city",
+            "manager_name",
+            "employee_name",
+            "bank_account",
+            "payment_method",
+            "notes",
+            "shop_image_base64",
+            "shop_image_content_type",
+        }
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "One or more merchant fields are not allowed.",
+                400,
+            )
+
         application, code = create_recruited_merchant(request.env, partner, payload)
+        if code and not isinstance(code, str):
+            return code
         errors = {
             NAME_REQUIRED: ("NAME_REQUIRED", "Merchant name is required.", 400),
             EMAIL_REQUIRED: ("EMAIL_REQUIRED", "Merchant email is required.", 400),

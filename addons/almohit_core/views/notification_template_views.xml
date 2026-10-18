@@ -40,15 +40,13 @@
                             <field name="recipient_type"/>
                         </group>
                     </group>
-                    <group string="Message Body">
-                    <field
-                        name="body"
-                        nolabel="1"
-                        colspan="4"
-                        placeholder="اكتب رسالة واتساب هنا..."
-                        style="min-height: 260px; width: 100%; direction: rtl; text-align: right;"
-                    />
-                    </group>
+                    <separator string="Message Body"/>
+                        <field
+                            name="body"
+                            nolabel="1"
+                            placeholder="اكتب رسالة واتساب هنا..."
+                            style="min-height: 260px;"
+                        />
                     <group string="Available Variables">
                         <field name="variable_help" nolabel="1"/>
                     </group>

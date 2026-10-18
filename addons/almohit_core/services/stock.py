@@ -1,7 +1,10 @@
+from datetime import datetime, time
+
 from odoo.exceptions import UserError
 from odoo.tools.float_utils import float_compare
 
 from .addresses import serialize_address
+from .api import error, parse_date_range_params, _query_scalar
 from .payments import order_allows_distribution
 
 
@@ -12,6 +15,13 @@ PICKING_STATUS_MAP = {
     "assigned": "ready",
     "done": "delivered",
     "cancel": "cancelled",
+}
+API_DELIVERY_STATUS_STATES = {
+    "pending": ("draft",),
+    "waiting": ("waiting", "confirmed"),
+    "ready": ("assigned",),
+    "delivered": ("done",),
+    "cancelled": ("cancel",),
 }
 
 
@@ -211,6 +221,60 @@ def search_assigned_deliveries(env, user):
         order="id desc",
     )
     return pickings.filtered(picking_allows_distribution)
+
+
+def parse_delivery_list_params(kwargs):
+    extra = []
+    raw_q = _query_scalar(kwargs, "q")
+    q = str(raw_q).strip() if raw_q not in (None, "") else ""
+    if q:
+        extra += [
+            "|",
+            "|",
+            ("name", "ilike", q),
+            ("origin", "ilike", q),
+            ("sale_id.name", "ilike", q),
+        ]
+
+    raw_status = _query_scalar(kwargs, "status")
+    if raw_status not in (None, ""):
+        status = str(raw_status).strip().lower()
+        native_states = API_DELIVERY_STATUS_STATES.get(status)
+        if not native_states:
+            return None, None, error(
+                "INVALID_FILTER",
+                "status must be one of: pending, waiting, ready, delivered, cancelled.",
+                400,
+            )
+        extra.append(("state", "in", list(native_states)))
+
+    date_from, date_to, err = parse_date_range_params(kwargs)
+    if err:
+        return None, None, err
+    if date_from:
+        extra.append(
+            ("scheduled_date", ">=", datetime.combine(date_from, time.min))
+        )
+    if date_to:
+        extra.append(
+            ("scheduled_date", "<=", datetime.combine(date_to, time(23, 59, 59)))
+        )
+
+    order = "id desc"
+    raw_sort = _query_scalar(kwargs, "sort")
+    if raw_sort not in (None, ""):
+        sort = str(raw_sort).strip().lower()
+        if sort == "newest":
+            order = "scheduled_date desc, id desc"
+        elif sort == "oldest":
+            order = "scheduled_date asc, id asc"
+        else:
+            return None, None, error(
+                "INVALID_SORT",
+                "sort must be one of: newest, oldest.",
+                400,
+            )
+    return extra, order, None
 
 
 def owned_assigned_delivery(env, user, picking_id):

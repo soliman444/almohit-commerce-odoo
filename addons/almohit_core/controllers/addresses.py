@@ -5,13 +5,14 @@ from odoo.http import request
 
 from ..services.addresses import (
     owned_address,
+    parse_address_list_params,
     parse_address_payload,
     search_addresses,
     serialize_address,
     validate_state_country,
 )
-from ..services.api import error, success
-from ..services.customer import commercial_partner, require_customer_partner
+from ..services.api import error, paginated_success, parse_pagination, success
+from ..services.customer import commercial_partner, require_almohit_group, require_customer_partner
 
 
 class AlmohitAddressController(http.Controller):
@@ -24,12 +25,28 @@ class AlmohitAddressController(http.Controller):
         csrf=False,
     )
     def list_addresses(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
+        if err:
+            return err
+        page, page_size, err = parse_pagination(kwargs)
+        if err:
+            return err
+        extra, order, err = parse_address_list_params(kwargs)
         if err:
             return err
         commercial = commercial_partner(partner)
         addresses = search_addresses(request.env, commercial)
-        return success([serialize_address(address) for address in addresses])
+        addresses = addresses.search(
+            [("id", "in", addresses.ids)] + extra,
+            order=order,
+        )
+        return paginated_success(addresses, serialize_address, page, page_size)
 
     @http.route(
         "/almohit/api/addresses",
@@ -39,12 +56,76 @@ class AlmohitAddressController(http.Controller):
         csrf=False,
     )
     def create_address(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
         if err:
             return err
         payload, err = self._json_payload()
         if err:
             return err
+
+        extra_keys = set(payload) - {
+            "type",
+            "name",
+            "street",
+            "street2",
+            "city",
+            "zip",
+            "phone",
+            "state_id",
+            "country_id",
+            "country_code",
+        }
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "One or more address fields are not allowed.",
+                400,
+            )
+
+        address_type = payload.get("type")
+        if not isinstance(address_type, str) or address_type.strip() not in (
+            "delivery",
+            "invoice",
+        ):
+            return error(
+                "INVALID_ADDRESS",
+                "type must be delivery or invoice.",
+                400,
+            )
+
+        if "state_id" in payload:
+            state_id = payload.get("state_id")
+            if state_id is not None and state_id is not False and state_id != "":
+                if (
+                    isinstance(state_id, bool)
+                    or not isinstance(state_id, int)
+                    or state_id < 1
+                ):
+                    return error(
+                        "INVALID_ADDRESS",
+                        "state_id must be a positive integer.",
+                        400,
+                    )
+
+        if "country_id" in payload:
+            country_id = payload.get("country_id")
+            if country_id is not None and country_id is not False and country_id != "":
+                if (
+                    isinstance(country_id, bool)
+                    or not isinstance(country_id, int)
+                    or country_id < 1
+                ):
+                    return error(
+                        "INVALID_ADDRESS",
+                        "country_id must be a positive integer.",
+                        400,
+                    )
 
         values, parse_err = parse_address_payload(request.env, payload)
         if parse_err:
@@ -68,12 +149,77 @@ class AlmohitAddressController(http.Controller):
         csrf=False,
     )
     def update_address(self, address_id, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
         if err:
             return err
         payload, err = self._json_payload()
         if err:
             return err
+
+        extra_keys = set(payload) - {
+            "type",
+            "name",
+            "street",
+            "street2",
+            "city",
+            "zip",
+            "phone",
+            "state_id",
+            "country_id",
+            "country_code",
+        }
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "One or more address fields are not allowed.",
+                400,
+            )
+
+        if "type" in payload:
+            address_type = payload.get("type")
+            if not isinstance(address_type, str) or address_type.strip() not in (
+                "delivery",
+                "invoice",
+            ):
+                return error(
+                    "INVALID_ADDRESS",
+                    "type must be delivery or invoice.",
+                    400,
+                )
+
+        if "state_id" in payload:
+            state_id = payload.get("state_id")
+            if state_id is not None and state_id is not False and state_id != "":
+                if (
+                    isinstance(state_id, bool)
+                    or not isinstance(state_id, int)
+                    or state_id < 1
+                ):
+                    return error(
+                        "INVALID_ADDRESS",
+                        "state_id must be a positive integer.",
+                        400,
+                    )
+
+        if "country_id" in payload:
+            country_id = payload.get("country_id")
+            if country_id is not None and country_id is not False and country_id != "":
+                if (
+                    isinstance(country_id, bool)
+                    or not isinstance(country_id, int)
+                    or country_id < 1
+                ):
+                    return error(
+                        "INVALID_ADDRESS",
+                        "country_id must be a positive integer.",
+                        400,
+                    )
 
         commercial = commercial_partner(partner)
         address = owned_address(request.env, commercial, address_id)
@@ -103,6 +249,12 @@ class AlmohitAddressController(http.Controller):
         csrf=False,
     )
     def delete_address(self, address_id, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
         if err:
             return err

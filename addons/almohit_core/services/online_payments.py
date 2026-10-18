@@ -1,11 +1,21 @@
+from datetime import datetime, time
+
 from odoo.http import request
 from odoo.tools import float_is_zero
 
-from .api import error
+from .api import error, parse_date_range_params, _query_scalar
 from .customer import commercial_partner
 from .payments import _round_amount
 
 ACTIVE_TX_STATES = ("draft", "pending", "authorized")
+CUSTOMER_TX_STATES = (
+    "draft",
+    "pending",
+    "authorized",
+    "done",
+    "cancel",
+    "error",
+)
 PAID_STATES = ("paid",)
 UNPAYABLE_PAYMENT_STATES = ("reversed", "invoicing_legacy")
 HIDDEN_FLOW_KEYS = frozenset({
@@ -270,6 +280,71 @@ def transactions_for_invoices(invoices):
     return invoices.transaction_ids.filtered(
         lambda tx: tx.operation != "refund"
     ).sorted("id", reverse=True)
+
+
+def parse_transaction_list_params(kwargs):
+    extra = []
+    raw_q = _query_scalar(kwargs, "q")
+    q = str(raw_q).strip() if raw_q not in (None, "") else ""
+    if q:
+        extra.append(("reference", "ilike", q))
+
+    raw_state = _query_scalar(kwargs, "state")
+    if raw_state not in (None, ""):
+        state = str(raw_state).strip().lower()
+        if state not in CUSTOMER_TX_STATES:
+            return None, None, error(
+                "INVALID_FILTER",
+                "state must be one of: draft, pending, authorized, done, cancel, error.",
+                400,
+            )
+        extra.append(("state", "=", state))
+
+    raw_provider = _query_scalar(kwargs, "provider_id")
+    if raw_provider not in (None, ""):
+        try:
+            provider_id = int(str(raw_provider).strip())
+        except (TypeError, ValueError):
+            return None, None, error(
+                "INVALID_FILTER",
+                "provider_id must be a positive integer.",
+                400,
+            )
+        if provider_id <= 0:
+            return None, None, error(
+                "INVALID_FILTER",
+                "provider_id must be a positive integer.",
+                400,
+            )
+        extra.append(("provider_id", "=", provider_id))
+
+    date_from, date_to, err = parse_date_range_params(kwargs)
+    if err:
+        return None, None, err
+    if date_from:
+        extra.append(
+            ("create_date", ">=", datetime.combine(date_from, time.min))
+        )
+    if date_to:
+        extra.append(
+            ("create_date", "<=", datetime.combine(date_to, time(23, 59, 59)))
+        )
+
+    order = "id desc"
+    raw_sort = _query_scalar(kwargs, "sort")
+    if raw_sort not in (None, ""):
+        sort = str(raw_sort).strip().lower()
+        if sort == "newest":
+            order = "create_date desc, id desc"
+        elif sort == "oldest":
+            order = "create_date asc, id asc"
+        else:
+            return None, None, error(
+                "INVALID_SORT",
+                "sort must be one of: newest, oldest.",
+                400,
+            )
+    return extra, order, None
 
 
 def owned_customer_transaction(invoices, transaction_id):

@@ -4,6 +4,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import success, error
+from ..services.customer import require_almohit_group
 from ..services.cart import (
     min_order_qty,
     parse_quantity,
@@ -25,6 +26,12 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def get_cart(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = self._require_approved_customer()
         if err:
             return err
@@ -47,6 +54,12 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def add_item(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = self._require_approved_customer()
         if err:
             return err
@@ -54,21 +67,31 @@ class AlmohitCartController(http.Controller):
         if err:
             return err
 
-        product_id = payload.get("product_id")
-        try:
-            product_id = int(product_id)
-        except (TypeError, ValueError):
+        extra_keys = set(payload) - {"product_id", "quantity"}
+        if extra_keys:
             return error(
-                "PRODUCT_NOT_FOUND",
-                "Product not found.",
-                404,
+                "INVALID_FIELDS",
+                "Only product_id and quantity are allowed.",
+                400,
+            )
+
+        product_id = payload.get("product_id")
+        if (
+            isinstance(product_id, bool)
+            or not isinstance(product_id, int)
+            or product_id < 1
+        ):
+            return error(
+                "INVALID_CART_ITEM",
+                "product_id must be a positive integer.",
+                400,
             )
 
         quantity = parse_quantity(payload)
         if quantity is None or quantity <= 0:
             return error(
-                "INVALID_QUANTITY",
-                "Enter a valid quantity.",
+                "INVALID_CART_ITEM",
+                "quantity must be greater than 0.",
                 400,
             )
 
@@ -122,6 +145,12 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def update_item(self, line_id, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = self._require_approved_customer()
         if err:
             return err
@@ -129,11 +158,19 @@ class AlmohitCartController(http.Controller):
         if err:
             return err
 
+        extra_keys = set(payload) - {"quantity"}
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "Only quantity is allowed.",
+                400,
+            )
+
         quantity = parse_quantity(payload)
         if quantity is None:
             return error(
-                "INVALID_QUANTITY",
-                "Enter a valid quantity.",
+                "INVALID_CART_ITEM",
+                "quantity must be numeric.",
                 400,
             )
 
@@ -176,6 +213,12 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def delete_item(self, line_id, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = self._require_approved_customer()
         if err:
             return err
@@ -199,6 +242,12 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def clear_cart(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+        )
+        if err:
+            return err
         partner, err = self._require_approved_customer()
         if err:
             return err

@@ -1,3 +1,5 @@
+from .api import error, _query_scalar
+
 ALLOWED_ADDRESS_TYPES = ("delivery", "invoice")
 
 
@@ -47,6 +49,53 @@ def search_addresses(env, commercial):
         address_domain(commercial),
         order="type, id",
     )
+
+
+def parse_address_list_params(kwargs):
+    extra = []
+    raw_q = _query_scalar(kwargs, "q")
+    q = str(raw_q).strip() if raw_q not in (None, "") else ""
+    if q:
+        extra += [
+            "|",
+            "|",
+            "|",
+            "|",
+            "|",
+            ("name", "ilike", q),
+            ("street", "ilike", q),
+            ("street2", "ilike", q),
+            ("city", "ilike", q),
+            ("zip", "ilike", q),
+            ("phone", "ilike", q),
+        ]
+
+    raw_type = _query_scalar(kwargs, "type")
+    if raw_type not in (None, ""):
+        address_type = str(raw_type).strip().lower()
+        if address_type not in ALLOWED_ADDRESS_TYPES:
+            return None, None, error(
+                "INVALID_FILTER",
+                "type must be one of: delivery, invoice.",
+                400,
+            )
+        extra.append(("type", "=", address_type))
+
+    order = "type, id"
+    raw_sort = _query_scalar(kwargs, "sort")
+    if raw_sort not in (None, ""):
+        sort = str(raw_sort).strip().lower()
+        if sort == "newest":
+            order = "id desc"
+        elif sort == "oldest":
+            order = "id asc"
+        else:
+            return None, None, error(
+                "INVALID_SORT",
+                "sort must be one of: newest, oldest.",
+                400,
+            )
+    return extra, order, None
 
 
 def owned_address(env, commercial, address_id):

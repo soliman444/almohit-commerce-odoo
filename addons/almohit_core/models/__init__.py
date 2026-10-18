@@ -1,3 +1,4 @@
+from . import ir_http
 from . import res_partner
 from . import trade_application
 from . import product_brand
@@ -13,3 +14,4 @@ from . import account_move
 from . import account_partial_reconcile
 from . import res_config_settings
 from . import whatsapp_account
+from . import whatsapp_session_log

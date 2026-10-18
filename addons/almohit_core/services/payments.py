@@ -1,6 +1,8 @@
 from odoo.fields import Command
 from odoo import fields
 
+from .api import error, parse_date_range_params, _query_scalar
+
 
 def _receivable_lines(moves):
     return moves.line_ids.filtered(
@@ -120,6 +122,42 @@ def payments_for_invoices(invoices):
             and payment.partner_type == "customer"
         )
     ).sorted("id", reverse=True)
+
+
+def parse_payment_list_params(kwargs):
+    extra = []
+    raw_q = _query_scalar(kwargs, "q")
+    q = str(raw_q).strip() if raw_q not in (None, "") else ""
+    if q:
+        extra += [
+            "|",
+            ("name", "ilike", q),
+            ("ref", "ilike", q),
+        ]
+
+    date_from, date_to, err = parse_date_range_params(kwargs)
+    if err:
+        return None, None, err
+    if date_from:
+        extra.append(("date", ">=", date_from))
+    if date_to:
+        extra.append(("date", "<=", date_to))
+
+    order = "id desc"
+    raw_sort = _query_scalar(kwargs, "sort")
+    if raw_sort not in (None, ""):
+        sort = str(raw_sort).strip().lower()
+        if sort == "newest":
+            order = "date desc, id desc"
+        elif sort == "oldest":
+            order = "date asc, id asc"
+        else:
+            return None, None, error(
+                "INVALID_SORT",
+                "sort must be one of: newest, oldest.",
+                400,
+            )
+    return extra, order, None
 
 
 def related_invoices(payment, invoices):

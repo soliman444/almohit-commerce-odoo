@@ -9,3 +9,4 @@ access_almohit_notification_template_user,almohit.notification.template.user,mod
 access_almohit_notification_template_system,almohit.notification.template.system,model_almohit_notification_template,base.group_system,1,1,1,1
 access_almohit_notification_preview_user,almohit.notification.preview.user,model_almohit_notification_preview,base.group_user,1,1,1,1
 access_almohit_whatsapp_account_system,almohit.whatsapp.account.system,model_almohit_whatsapp_account,base.group_system,1,1,1,1
+access_almohit_whatsapp_session_log_user,almohit.whatsapp.session.log.user,model_almohit_whatsapp_session_log,base.group_user,1,0,0,0

@@ -26,6 +26,14 @@ class AlmohitAuthController(http.Controller):
                 400,
             )
 
+        extra_keys = set(payload) - {"name", "email", "password", "phone", "role"}
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "One or more registration fields are not allowed.",
+                400,
+            )
+
         name = (payload.get("name") or "").strip()
         email = (payload.get("email") or "").strip().lower()
         password = payload.get("password") or ""
@@ -125,9 +133,23 @@ class AlmohitAuthController(http.Controller):
                 400,
             )
 
-        email = (payload.get("email") or "").strip().lower()
-        password = payload.get("password") or ""
+        extra_keys = set(payload) - {"email", "password"}
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "Only email and password are allowed.",
+                400,
+            )
 
+        email = payload.get("email")
+        password = payload.get("password")
+        if not isinstance(email, str) or not isinstance(password, str):
+            return error(
+                "INVALID_CREDENTIALS",
+                "Email and password are required.",
+                400,
+            )
+        email = email.strip().lower()
         if not email or not password:
             return error(
                 "INVALID_CREDENTIALS",
@@ -152,7 +174,7 @@ class AlmohitAuthController(http.Controller):
             )
 
         user = request.env["res.users"].sudo().browse(uid)
-        return success(serialize_auth_user(user, include_session=True))
+        return success(serialize_auth_user(user))
 
     @http.route(
         "/almohit/api/auth/me",
@@ -165,7 +187,7 @@ class AlmohitAuthController(http.Controller):
         user, err = require_api_user()
         if err:
             return err
-        return success(serialize_auth_user(user, include_session=True))
+        return success(serialize_auth_user(user))
 
     @http.route(
         "/almohit/api/auth/logout",

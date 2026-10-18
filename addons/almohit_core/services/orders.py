@@ -1,12 +1,17 @@
+from datetime import datetime, time
+
 from odoo.exceptions import UserError
 from odoo.http import request
 
 from .addresses import owned_address, serialize_address
+from .api import error, parse_date_range_params, _query_scalar
 from .cart import min_order_qty, quantity_below_moq, serialize_cart
 from .customer import commercial_partner, serialize_payment_term
 from .invoices import customer_invoice_ids, serialize_invoice_summary
 from .payments import serialize_order_payment
 from .stock import insufficient_stock_error, serialize_delivery
+
+CUSTOMER_ORDER_STATES = ("sale", "done", "sent")
 
 
 def serialize_order(order):
@@ -43,6 +48,57 @@ def search_confirmed_orders(env, partner):
         confirmed_order_domain(partner),
         order="id desc",
     )
+
+
+def parse_order_list_params(kwargs):
+    extra = []
+    raw_q = _query_scalar(kwargs, "q")
+    q = str(raw_q).strip() if raw_q not in (None, "") else ""
+    if q:
+        extra += [
+            "|",
+            ("name", "ilike", q),
+            ("client_order_ref", "ilike", q),
+        ]
+
+    raw_state = _query_scalar(kwargs, "state")
+    if raw_state not in (None, ""):
+        state = str(raw_state).strip().lower()
+        if state not in CUSTOMER_ORDER_STATES:
+            return None, None, error(
+                "INVALID_FILTER",
+                "state must be one of: sale, done, sent.",
+                400,
+            )
+        extra.append(("state", "=", state))
+
+    date_from, date_to, err = parse_date_range_params(kwargs)
+    if err:
+        return None, None, err
+    if date_from:
+        extra.append(
+            ("date_order", ">=", datetime.combine(date_from, time.min))
+        )
+    if date_to:
+        extra.append(
+            ("date_order", "<=", datetime.combine(date_to, time(23, 59, 59)))
+        )
+
+    order = "id desc"
+    raw_sort = _query_scalar(kwargs, "sort")
+    if raw_sort not in (None, ""):
+        sort = str(raw_sort).strip().lower()
+        if sort == "newest":
+            order = "date_order desc, id desc"
+        elif sort == "oldest":
+            order = "date_order asc, id asc"
+        else:
+            return None, None, error(
+                "INVALID_SORT",
+                "sort must be one of: newest, oldest.",
+                400,
+            )
+    return extra, order, None
 
 
 def owned_confirmed_order(env, partner, order_id):

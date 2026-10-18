@@ -2,7 +2,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import error, read_json_body, success
-from ..services.customer import require_customer_partner
+from ..services.customer import require_almohit_group, require_customer_partner
 from ..services.trade import (
     APPLICATION_ALREADY_APPROVED,
     APPLICATION_ALREADY_PENDING,
@@ -26,6 +26,14 @@ class AlmohitTradeController(http.Controller):
         csrf=False,
     )
     def create_application(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+            "almohit_core.group_almohit_marketer",
+            "almohit_core.group_almohit_distributor",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
         if err:
             return err
@@ -34,7 +42,33 @@ class AlmohitTradeController(http.Controller):
         if err:
             return err
 
+        extra_keys = set(payload) - {
+            "company_name",
+            "tax_number",
+            "business_type",
+            "phone",
+            "street",
+            "address",
+            "city",
+            "manager_name",
+            "employee_name",
+            "bank_account",
+            "payment_method",
+            "notes",
+            "shop_image_base64",
+            "shop_image_content_type",
+            "role",
+        }
+        if extra_keys:
+            return error(
+                "INVALID_FIELDS",
+                "One or more trade application fields are not allowed.",
+                400,
+            )
+
         application, code = create_own_application(request.env, partner, payload)
+        if code and not isinstance(code, str):
+            return code
         if code == COMPANY_NAME_REQUIRED:
             return error(
                 "COMPANY_NAME_REQUIRED",
@@ -82,6 +116,14 @@ class AlmohitTradeController(http.Controller):
         csrf=False,
     )
     def get_application(self, **kwargs):
+        err = require_almohit_group(
+            "almohit_core.group_almohit_buyer",
+            "almohit_core.group_almohit_merchant",
+            "almohit_core.group_almohit_marketer",
+            "almohit_core.group_almohit_distributor",
+        )
+        if err:
+            return err
         partner, err = require_customer_partner()
         if err:
             return err

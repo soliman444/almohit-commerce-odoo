@@ -1,6 +1,11 @@
+from datetime import datetime, time
+
 from odoo.exceptions import UserError, ValidationError
 
-from .admin_products import _decode_image
+from .admin_products import SHOP_IMAGE_MAX_BYTES, _decode_image
+from .api import error, parse_date_range_params, _query_scalar
+
+MERCHANT_APPLICATION_STATUSES = ("pending", "approved", "rejected")
 
 
 APPLICATION_ALREADY_PENDING = "APPLICATION_ALREADY_PENDING"
@@ -116,12 +121,15 @@ def create_own_application(env, partner, payload):
     if role not in APP_ROLES:
         return None, INVALID_ROLE
 
-    image_b64, image_err = _decode_image({
-        "image_base64": payload.get("shop_image_base64"),
-        "image_content_type": payload.get("shop_image_content_type"),
-    })
+    image_b64, image_err = _decode_image(
+        {
+            "image_base64": payload.get("shop_image_base64"),
+            "image_content_type": payload.get("shop_image_content_type"),
+        },
+        max_bytes=SHOP_IMAGE_MAX_BYTES,
+    )
     if image_err:
-        return None, INVALID_IMAGE
+        return None, image_err
 
     values = {
         "partner_id": partner.id,
@@ -145,6 +153,8 @@ def create_own_application(env, partner, payload):
         application = _applications(env).create(values)
     except ValidationError:
         return None, APPLICATION_ALREADY_PENDING
+    except UserError:
+        return None, error("INVALID_IMAGE_DATA", "Image data is invalid.", 400)
     if partner.almohit_app_role != role:
         partner.write({"almohit_app_role": role})
     return application, None
@@ -205,12 +215,15 @@ def create_recruited_merchant(env, marketer, payload):
     payment_method = (payload.get("payment_method") or "").strip()
     if payment_method and payment_method not in PAYMENT_METHODS:
         return None, INVALID_PAYMENT_METHOD
-    image_b64, image_err = _decode_image({
-        "image_base64": payload.get("shop_image_base64"),
-        "image_content_type": payload.get("shop_image_content_type"),
-    })
+    image_b64, image_err = _decode_image(
+        {
+            "image_base64": payload.get("shop_image_base64"),
+            "image_content_type": payload.get("shop_image_content_type"),
+        },
+        max_bytes=SHOP_IMAGE_MAX_BYTES,
+    )
     if image_err:
-        return None, INVALID_IMAGE
+        return None, image_err
 
     user, code = _register_portal_user(env, name, email, password, phone, "merchant")
     if code:
@@ -240,15 +253,78 @@ def create_recruited_merchant(env, marketer, payload):
         application = _applications(env).create(values)
     except ValidationError:
         return None, APPLICATION_ALREADY_PENDING
+    except UserError:
+        return None, error("INVALID_IMAGE_DATA", "Image data is invalid.", 400)
     return application, None
 
 
-def list_recruited_merchants(env, marketer):
-    records = _applications(env).search(
+def search_recruited_merchants(env, marketer):
+    return _applications(env).search(
         [("recruited_by_id", "=", marketer.id)],
         order="id desc",
     )
-    return [serialize_application(record) for record in records]
+
+
+def parse_merchant_list_params(kwargs):
+    extra = []
+    raw_q = _query_scalar(kwargs, "q")
+    q = str(raw_q).strip() if raw_q not in (None, "") else ""
+    if q:
+        extra += [
+            "|",
+            "|",
+            "|",
+            ("company_name", "ilike", q),
+            ("tax_number", "ilike", q),
+            ("phone", "ilike", q),
+            ("partner_id.email", "ilike", q),
+        ]
+
+    raw_status = _query_scalar(kwargs, "status")
+    if raw_status not in (None, ""):
+        status = str(raw_status).strip().lower()
+        if status not in MERCHANT_APPLICATION_STATUSES:
+            return None, None, error(
+                "INVALID_FILTER",
+                "status must be one of: pending, approved, rejected.",
+                400,
+            )
+        extra.append(("status", "=", status))
+
+    date_from, date_to, err = parse_date_range_params(kwargs)
+    if err:
+        return None, None, err
+    if date_from:
+        extra.append(
+            ("create_date", ">=", datetime.combine(date_from, time.min))
+        )
+    if date_to:
+        extra.append(
+            ("create_date", "<=", datetime.combine(date_to, time(23, 59, 59)))
+        )
+
+    order = "id desc"
+    raw_sort = _query_scalar(kwargs, "sort")
+    if raw_sort not in (None, ""):
+        sort = str(raw_sort).strip().lower()
+        if sort == "newest":
+            order = "create_date desc, id desc"
+        elif sort == "oldest":
+            order = "create_date asc, id asc"
+        else:
+            return None, None, error(
+                "INVALID_SORT",
+                "sort must be one of: newest, oldest.",
+                400,
+            )
+    return extra, order, None
+
+
+def list_recruited_merchants(env, marketer):
+    return [
+        serialize_application(record)
+        for record in search_recruited_merchants(env, marketer)
+    ]
 
 
 APPLICATION_NOT_FOUND = "APPLICATION_NOT_FOUND"

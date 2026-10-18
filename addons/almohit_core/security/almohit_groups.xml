@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="module_category_almohit_roles" model="ir.module.category">
+        <field name="name">Almohit Application Roles</field>
+        <field name="sequence">90</field>
+    </record>
+
+    <record id="group_almohit_buyer" model="res.groups">
+        <field name="name">Almohit Buyer</field>
+        <field name="category_id" ref="module_category_almohit_roles"/>
+        <field name="share" eval="True"/>
+    </record>
+
+    <record id="group_almohit_merchant" model="res.groups">
+        <field name="name">Almohit Merchant</field>
+        <field name="category_id" ref="module_category_almohit_roles"/>
+        <field name="share" eval="True"/>
+    </record>
+
+    <record id="group_almohit_marketer" model="res.groups">
+        <field name="name">Almohit Marketer</field>
+        <field name="category_id" ref="module_category_almohit_roles"/>
+        <field name="share" eval="True"/>
+    </record>
+
+    <record id="group_almohit_distributor" model="res.groups">
+        <field name="name">Almohit Distributor</field>
+        <field name="category_id" ref="module_category_almohit_roles"/>
+        <field name="share" eval="True"/>
+    </record>
+</odoo>

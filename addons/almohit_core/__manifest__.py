@@ -1,6 +1,6 @@
 {
     "name": "Almohit Core",
-    "version": "17.0.1.44.0",
+    "version": "17.0.1.45.0",
     "summary": "Core backend and API for Almohit",
     "category": "Sales",
     "author": "Almohit",
@@ -19,6 +19,7 @@
     "post_init_hook": "post_init_hook",
 
     "data": [
+        "security/almohit_groups.xml",
         "security/ir.model.access.csv",
         "data/product_pricelist_data.xml",
         "data/whatsapp_cron.xml",
@@ -28,6 +29,7 @@
         "views/notification_template_views.xml",
         "views/res_config_settings_views.xml",
         "views/whatsapp_account_views.xml",
+        "views/whatsapp_session_log_views.xml",
         "views/product_brand_views.xml",
         "views/product_template_views.xml",
         "views/sale_order_views.xml",

@@ -14,7 +14,13 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-_inspect_*.py
+cookies.txt
+*.tmp
+_*.py
+_*.json
+_*.txt
+_*.ps1
+_*.html
 
 node_modules/
 services/almohit-whatsapp/node_modules/

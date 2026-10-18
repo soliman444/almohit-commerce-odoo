@@ -1,4 +1,5 @@
 from .admin_products import (
+    PRODUCT_IMAGE_MAX_BYTES,
     _as_int,
     _decode_image,
     serialize_admin_attribute,
@@ -70,7 +71,7 @@ def create_admin_brand(env, payload):
     if existing:
         return None, error("BRAND_EXISTS", "A brand with this name already exists.", 409)
 
-    image_b64, image_err = _decode_image(payload)
+    image_b64, image_err = _decode_image(payload, max_bytes=PRODUCT_IMAGE_MAX_BYTES)
     if image_err:
         return None, image_err
 

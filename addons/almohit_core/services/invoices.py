@@ -1,4 +1,15 @@
+from .api import error, parse_date_range_params, _query_scalar
 from .payments import payments_for_invoices, serialize_payment_summary
+
+CUSTOMER_INVOICE_STATES = ("draft", "posted", "cancel")
+CUSTOMER_PAYMENT_STATES = (
+    "not_paid",
+    "in_payment",
+    "paid",
+    "partial",
+    "reversed",
+    "invoicing_legacy",
+)
 
 
 def serialize_invoice_line(line):
@@ -120,6 +131,64 @@ def customer_invoice_ids(orders):
 
 def search_customer_invoices(orders):
     return customer_invoice_ids(orders).sorted("id", reverse=True)
+
+
+def parse_invoice_list_params(kwargs):
+    extra = []
+    raw_q = _query_scalar(kwargs, "q")
+    q = str(raw_q).strip() if raw_q not in (None, "") else ""
+    if q:
+        extra += [
+            "|",
+            ("name", "ilike", q),
+            ("payment_reference", "ilike", q),
+        ]
+
+    raw_state = _query_scalar(kwargs, "state")
+    if raw_state not in (None, ""):
+        state = str(raw_state).strip().lower()
+        if state not in CUSTOMER_INVOICE_STATES:
+            return None, None, error(
+                "INVALID_FILTER",
+                "state must be one of: draft, posted, cancel.",
+                400,
+            )
+        extra.append(("state", "=", state))
+
+    raw_payment_state = _query_scalar(kwargs, "payment_state")
+    if raw_payment_state not in (None, ""):
+        payment_state = str(raw_payment_state).strip().lower()
+        if payment_state not in CUSTOMER_PAYMENT_STATES:
+            return None, None, error(
+                "INVALID_FILTER",
+                "payment_state must be one of: not_paid, in_payment, paid, partial, reversed, invoicing_legacy.",
+                400,
+            )
+        extra.append(("payment_state", "=", payment_state))
+
+    date_from, date_to, err = parse_date_range_params(kwargs)
+    if err:
+        return None, None, err
+    if date_from:
+        extra.append(("invoice_date", ">=", date_from))
+    if date_to:
+        extra.append(("invoice_date", "<=", date_to))
+
+    order = "id desc"
+    raw_sort = _query_scalar(kwargs, "sort")
+    if raw_sort not in (None, ""):
+        sort = str(raw_sort).strip().lower()
+        if sort == "newest":
+            order = "invoice_date desc, id desc"
+        elif sort == "oldest":
+            order = "invoice_date asc, id asc"
+        else:
+            return None, None, error(
+                "INVALID_SORT",
+                "sort must be one of: newest, oldest.",
+                400,
+            )
+    return extra, order, None
 
 
 def owned_customer_invoice(orders, invoice_id):

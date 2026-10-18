@@ -1,32 +1,9 @@
-from odoo.http import request, root
+from odoo.http import request
 
 from .api import error
 
 
-def apply_bearer_session():
-    """Accept Authorization: Bearer <session_id> in addition to the cookie."""
-    if request.session.uid:
-        return
-    header = request.httprequest.headers.get("Authorization") or ""
-    parts = header.split(None, 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return
-    sid = parts[1].strip()
-    if not sid:
-        return
-    try:
-        session = root.session_store.get(sid)
-    except Exception:
-        return
-    if not session or not getattr(session, "uid", None):
-        return
-    request.session.update(session)
-    request.session.sid = sid
-    request.update_env(user=session.uid)
-
-
 def require_api_user():
-    apply_bearer_session()
     user = request.env.user
     if not request.session.uid or user._is_public():
         return None, error(
@@ -35,6 +12,17 @@ def require_api_user():
             401,
         )
     return user, None
+
+
+def require_almohit_group(*group_xmlids):
+    user = request.env.user
+    if any(user.has_group(xmlid) for xmlid in group_xmlids):
+        return None
+    return error(
+        "ACCESS_DENIED",
+        "You do not have permission to access this resource.",
+        403,
+    )
 
 
 def require_customer_partner():
@@ -142,15 +130,9 @@ def serialize_price_group(partner):
     }
 
 
-def current_session_id():
-    if not request.session.uid:
-        return None
-    return request.session.sid or None
-
-
-def serialize_auth_user(user, partner=None, include_session=False):
+def serialize_auth_user(user, partner=None):
     partner = partner or user.partner_id
-    payload = {
+    return {
         "user_id": user.id,
         "partner_id": partner.id,
         "name": partner.name,
@@ -162,6 +144,3 @@ def serialize_auth_user(user, partner=None, include_session=False):
         "price_group": serialize_price_group(partner),
         "is_staff": not bool(user.share),
     }
-    if include_session:
-        payload["session_id"] = current_session_id()
-    return payload
