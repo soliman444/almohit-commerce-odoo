@@ -2,7 +2,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import error, paginated_success, parse_pagination, read_json_body, success
-from ..services.customer import require_almohit_group, require_customer_partner
+from ..services.customer import require_customer_partner, require_merchant_group
 from ..services.invoices import (
     owned_customer_invoice,
     parse_invoice_list_params,
@@ -23,10 +23,7 @@ class AlmohitInvoiceController(http.Controller):
         csrf=False,
     )
     def list_invoices(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = require_customer_partner()
@@ -54,10 +51,7 @@ class AlmohitInvoiceController(http.Controller):
         csrf=False,
     )
     def get_invoice(self, invoice_id, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = require_customer_partner()
@@ -77,10 +71,7 @@ class AlmohitInvoiceController(http.Controller):
         csrf=False,
     )
     def pay_invoice(self, invoice_id, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = require_customer_partner()

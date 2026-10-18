@@ -4,7 +4,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import success, error
-from ..services.customer import require_almohit_group
+from ..services.customer import require_merchant_group
 from ..services.cart import (
     min_order_qty,
     parse_quantity,
@@ -26,10 +26,7 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def get_cart(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = self._require_approved_customer()
@@ -54,10 +51,7 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def add_item(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = self._require_approved_customer()
@@ -145,10 +139,7 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def update_item(self, line_id, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = self._require_approved_customer()
@@ -213,10 +204,7 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def delete_item(self, line_id, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = self._require_approved_customer()
@@ -242,10 +230,7 @@ class AlmohitCartController(http.Controller):
         csrf=False,
     )
     def clear_cart(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = self._require_approved_customer()

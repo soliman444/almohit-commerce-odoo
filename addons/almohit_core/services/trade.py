@@ -255,6 +255,15 @@ def create_recruited_merchant(env, marketer, payload):
         return None, APPLICATION_ALREADY_PENDING
     except UserError:
         return None, error("INVALID_IMAGE_DATA", "Image data is invalid.", 400)
+    # Approved marketers auto-approve their recruited merchants using the
+    # same action_approve() path as staff review (pricelist, role, status,
+    # and a single trade_approved notification). env.user is the portal
+    # marketer; su=True only bypasses model ACL. reviewed_by records that
+    # marketer user, not a synthetic staff account.
+    try:
+        application.with_env(env(user=env.user, su=True)).action_approve()
+    except UserError:
+        return None, APPLICATION_NOT_PENDING
     return application, None
 
 

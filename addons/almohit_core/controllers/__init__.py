@@ -13,6 +13,7 @@ from . import deliveries
 from . import invoices
 from . import payments
 from . import online_payments
+from . import buyer
 from . import catalog_migration
 from . import admin_products
 from . import admin_taxonomy

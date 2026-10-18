@@ -2,7 +2,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import error, paginated_success, parse_pagination, success
-from ..services.customer import require_almohit_group, require_customer_partner
+from ..services.customer import require_customer_partner, require_merchant_group
 from ..services.invoices import search_customer_invoices
 from ..services.orders import search_confirmed_orders
 from ..services.payments import (
@@ -23,10 +23,7 @@ class AlmohitPaymentController(http.Controller):
         csrf=False,
     )
     def list_payments(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = require_customer_partner()
@@ -60,10 +57,7 @@ class AlmohitPaymentController(http.Controller):
         csrf=False,
     )
     def get_payment(self, payment_id, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = require_customer_partner()

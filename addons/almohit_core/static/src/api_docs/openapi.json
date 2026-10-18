@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Almohit App API",
-    "version": "17.0.1.45.0",
-    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.45.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Buyer and merchant: cart, checkout, orders, invoices, payments, addresses. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand: 2 MB. Shop image: 4 MB. Max 2000×2000. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
+    "version": "17.0.1.46.0",
+    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.46.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Merchant (external customer who buys FROM Almohit): cart, checkout, customer orders, invoices, payments, payment transactions, addresses. Buyer (Almohit procurement who buys FROM farmers/suppliers INTO inventory): `/almohit/api/buyer/*` only — suppliers, procurement products, purchase orders, incoming receipts. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Buyer is denied customer commerce. Merchant/marketer/distributor are denied buyer procurement. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Buyer procurement.** Native `res.partner` vendors (`supplier_rank > 0`), `product.template`/`product.product`, `purchase.order`, and incoming `stock.picking`. Confirm uses `purchase.order.button_confirm()`. Receive uses `stock.picking.button_validate()` after setting done quantities. Portal Buyer + sudo after `group_almohit_buyer`. Purchases are scoped to `purchase.order.user_id` of the current Buyer.\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand, buyer procurement product). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand/buyer product: 2 MB. Shop image: 4 MB. Max 2000×2000. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
   },
   "servers": [
     { "url": "/", "description": "This Odoo server" }
@@ -11,6 +11,7 @@
   "tags": [
     { "name": "Health" },
     { "name": "Catalog" },
+    { "name": "Buyer" },
     { "name": "Auth" },
     { "name": "Trade" },
     { "name": "Cart" },
@@ -492,6 +493,190 @@
           "items": { "type": "array", "items": { "type": "object" } },
           "allowed_actions": { "type": "array", "items": { "type": "string", "enum": ["ready", "delivered"] } }
         }
+      },
+      "BuyerSupplier": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 300 },
+          "name": { "type": "string", "example": "Farmer Ahmed" },
+          "phone": { "type": "string", "nullable": true },
+          "mobile": { "type": "string", "nullable": true },
+          "email": { "type": "string", "nullable": true },
+          "street": { "type": "string", "nullable": true },
+          "street2": { "type": "string", "nullable": true },
+          "city": { "type": "string", "nullable": true },
+          "zip": { "type": "string", "nullable": true },
+          "state": { "$ref": "#/components/schemas/NamedRel" },
+          "country": { "type": "object", "nullable": true, "properties": { "id": { "type": "integer" }, "name": { "type": "string" }, "code": { "type": "string", "nullable": true } } },
+          "vat": { "type": "string", "nullable": true },
+          "comment": { "type": "string", "nullable": true },
+          "supplier_rank": { "type": "integer", "example": 1 },
+          "active": { "type": "boolean" }
+        }
+      },
+      "BuyerSupplierBody": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "phone": { "type": "string" },
+          "mobile": { "type": "string" },
+          "email": { "type": "string" },
+          "street": { "type": "string" },
+          "street2": { "type": "string" },
+          "city": { "type": "string" },
+          "zip": { "type": "string" },
+          "state_id": { "type": "integer" },
+          "country_id": { "type": "integer" },
+          "tax_number": { "type": "string", "description": "Mapped to native res.partner.vat" },
+          "vat": { "type": "string" },
+          "notes": { "type": "string", "description": "Mapped to native res.partner.comment" },
+          "comment": { "type": "string" }
+        }
+      },
+      "BuyerProduct": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "product.product id" },
+          "template_id": { "type": "integer" },
+          "name": { "type": "string", "example": "Pomegranate" },
+          "default_code": { "type": "string", "nullable": true },
+          "barcode": { "type": "string", "nullable": true },
+          "category": { "$ref": "#/components/schemas/NamedRel" },
+          "brand": { "$ref": "#/components/schemas/NamedRel" },
+          "uom": { "$ref": "#/components/schemas/NamedRel" },
+          "purchase_uom": { "$ref": "#/components/schemas/NamedRel" },
+          "image_url": { "type": "string", "nullable": true },
+          "active": { "type": "boolean" },
+          "type": { "type": "string", "enum": ["consu", "service", "product"] },
+          "standard_cost": { "type": "number", "description": "Native standard_price. Not a sales pricelist price." },
+          "last_purchase_price": { "type": "number", "nullable": true },
+          "purchase_ok": { "type": "boolean" }
+        }
+      },
+      "BuyerProductBody": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "default_code": { "type": "string" },
+          "barcode": { "type": "string" },
+          "category_id": { "type": "integer" },
+          "brand_id": { "type": "integer" },
+          "uom_id": { "type": "integer" },
+          "uom_po_id": { "type": "integer" },
+          "type": { "type": "string", "enum": ["consu", "service", "product"], "default": "product" },
+          "purchase_description": { "type": "string" },
+          "image_base64": { "type": "string" },
+          "image_content_type": { "type": "string", "enum": ["image/jpeg", "image/png", "image/webp"] }
+        }
+      },
+      "BuyerPurchaseLine": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "product": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": "string" }, "default_code": { "type": "string", "nullable": true } } },
+          "quantity": { "type": "number", "example": 100 },
+          "uom": { "$ref": "#/components/schemas/NamedRel" },
+          "price_unit": { "type": "number", "example": 8.5 },
+          "subtotal": { "type": "number" },
+          "planned_date": { "type": "string", "nullable": true },
+          "received_qty": { "type": "number" },
+          "remaining_qty": { "type": "number" }
+        }
+      },
+      "BuyerPurchaseLineBody": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "description": "Existing line id for PATCH" },
+          "product_id": { "type": "integer" },
+          "quantity": { "type": "number" },
+          "price_unit": { "type": "number" },
+          "planned_date": { "type": "string" },
+          "remove": { "type": "boolean", "description": "PATCH only. Unlink this line." }
+        }
+      },
+      "BuyerPurchase": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "supplier": { "$ref": "#/components/schemas/NamedRel" },
+          "state": { "type": "string", "enum": ["draft", "sent", "to approve", "purchase", "done", "cancel"] },
+          "date_order": { "type": "string", "nullable": true },
+          "currency": { "$ref": "#/components/schemas/NamedRel" },
+          "amount_untaxed": { "type": "number" },
+          "amount_tax": { "type": "number" },
+          "amount_total": { "type": "number" },
+          "buyer": { "$ref": "#/components/schemas/NamedRel" },
+          "receipt_count": { "type": "integer" },
+          "receipt_states": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": "string", "nullable": true },
+          "lines": { "type": "array", "items": { "$ref": "#/components/schemas/BuyerPurchaseLine" } },
+          "receipts": { "type": "array", "items": { "$ref": "#/components/schemas/BuyerReceipt" } }
+        }
+      },
+      "BuyerPurchaseBody": {
+        "type": "object",
+        "required": ["supplier_id"],
+        "additionalProperties": false,
+        "properties": {
+          "supplier_id": { "type": "integer", "example": 300 },
+          "date_order": { "type": "string", "example": "2026-10-18" },
+          "notes": { "type": "string" },
+          "lines": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/BuyerPurchaseLineBody" },
+            "example": [{ "product_id": 145, "quantity": 100, "price_unit": 8.5 }]
+          }
+        }
+      },
+      "BuyerReceiptLine": {
+        "type": "object",
+        "properties": {
+          "move_id": { "type": "integer", "example": 123 },
+          "product": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": "string" }, "default_code": { "type": "string", "nullable": true } } },
+          "ordered_qty": { "type": "number" },
+          "received_qty": { "type": "number" },
+          "remaining_qty": { "type": "number" },
+          "uom": { "$ref": "#/components/schemas/NamedRel" }
+        }
+      },
+      "BuyerReceipt": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "state": { "type": "string", "enum": ["draft", "waiting", "confirmed", "assigned", "done", "cancel"] },
+          "scheduled_date": { "type": "string", "nullable": true },
+          "date_done": { "type": "string", "nullable": true },
+          "supplier": { "$ref": "#/components/schemas/NamedRel" },
+          "purchase": { "$ref": "#/components/schemas/NamedRel" },
+          "lines": { "type": "array", "items": { "$ref": "#/components/schemas/BuyerReceiptLine" } },
+          "backorder_id": { "type": "integer", "nullable": true },
+          "backorders": { "type": "array", "items": { "$ref": "#/components/schemas/NamedRel" } }
+        }
+      },
+      "BuyerReceiveBody": {
+        "type": "object",
+        "required": ["lines"],
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["move_id", "quantity_done"],
+              "properties": {
+                "move_id": { "type": "integer", "example": 123 },
+                "quantity_done": { "type": "number", "example": 100 }
+              }
+            }
+          }
+        }
       }
     },
     "responses": {
@@ -712,7 +897,7 @@
       "get": {
         "tags": ["Cart"],
         "summary": "Current cart",
-        "description": "Approved buyer or merchant. Marketers cannot order. Unapproved: 403 WHOLESALE_APPROVAL_REQUIRED.",
+        "description": "Approved merchant only. Buyer, marketer, and distributor: 403 ACCESS_DENIED. Unapproved merchant: 403 WHOLESALE_APPROVAL_REQUIRED.",
         "responses": {
           "200": { "description": "Cart (empty cart has id null)." },
           "401": { "$ref": "#/components/responses/AuthRequired" },
@@ -777,7 +962,7 @@
       "get": {
         "tags": ["Addresses"],
         "summary": "List own addresses",
-        "description": "Buyer or merchant. `q` searches name, street, street2, city, zip, phone. Default order is type, id.",
+        "description": "Merchant only. `q` searches name, street, street2, city, zip, phone. Default order is type, id. Buyer: 403 ACCESS_DENIED.",
         "parameters": [
           { "$ref": "#/components/parameters/Page" },
           { "$ref": "#/components/parameters/PageSize" },
@@ -836,7 +1021,7 @@
       "post": {
         "tags": ["Orders"],
         "summary": "Place order from cart",
-        "description": "Approved buyer or merchant. Confirms the storefront sale.order (`action_confirm`). Does **not** create an invoice. Typical result: `state=sale`, `invoice_status=to invoice`, `invoices=[]` until staff invoicing.\n\nAllowlist: shipping_address_id, invoice_address_id.",
+        "description": "Approved merchant only. Buyer: 403 ACCESS_DENIED. Confirms the storefront sale.order (`action_confirm`). Does **not** create an invoice. Typical result: `state=sale`, `invoice_status=to invoice`, `invoices=[]` until staff invoicing.\n\nAllowlist: shipping_address_id, invoice_address_id.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CheckoutBody" } } } },
         "responses": {
           "200": { "description": "Confirmed order (serialize_order). No invoice is created by this call." },
@@ -852,7 +1037,7 @@
       "get": {
         "tags": ["Orders"],
         "summary": "List own confirmed storefront orders",
-        "description": "Buyer or merchant. Own records only. `q` searches name and client_order_ref. Dates filter `date_order`.",
+        "description": "Merchant only. Own storefront sale orders. Buyer: 403 ACCESS_DENIED. `q` searches name and client_order_ref. Dates filter `date_order`.",
         "parameters": [
           { "$ref": "#/components/parameters/Page" },
           { "$ref": "#/components/parameters/PageSize" },
@@ -888,7 +1073,7 @@
       "get": {
         "tags": ["Invoices"],
         "summary": "List own invoices",
-        "description": "Buyer or merchant. Invoices linked to own storefront orders. `q` searches name and payment_reference. Dates filter `invoice_date`.",
+        "description": "Merchant only. Invoices linked to own storefront orders. Buyer: 403 ACCESS_DENIED. `q` searches name and payment_reference. Dates filter `invoice_date`.",
         "parameters": [
           { "$ref": "#/components/parameters/Page" },
           { "$ref": "#/components/parameters/PageSize" },
@@ -941,7 +1126,7 @@
       "get": {
         "tags": ["Payments"],
         "summary": "List recorded payments",
-        "description": "Buyer or merchant. Posted inbound customer payments reconciled to own invoices. `q` searches name and ref. Dates filter payment `date`.",
+        "description": "Merchant only. Posted inbound customer payments reconciled to own invoices. Buyer: 403 ACCESS_DENIED. `q` searches name and ref. Dates filter payment `date`.",
         "parameters": [
           { "$ref": "#/components/parameters/Page" },
           { "$ref": "#/components/parameters/PageSize" },
@@ -976,6 +1161,7 @@
       "get": {
         "tags": ["Payments"],
         "summary": "Compatible online payment providers",
+        "description": "Merchant only. Buyer: 403 ACCESS_DENIED.",
         "parameters": [{ "name": "invoice_id", "in": "query", "schema": { "type": "integer" }, "description": "When set, amount/currency come from that owned invoice residual. Unknown invoice: 404 INVOICE_NOT_FOUND." }],
         "responses": {
           "200": { "description": "`data` is an array of `{ id, code, name, state }`." },
@@ -989,7 +1175,7 @@
       "get": {
         "tags": ["Payments"],
         "summary": "Online payment transactions",
-        "description": "`q` searches reference. Dates filter `create_date`.",
+        "description": "Merchant only. Buyer: 403 ACCESS_DENIED. `q` searches reference. Dates filter `create_date`.",
         "parameters": [
           { "$ref": "#/components/parameters/Page" },
           { "$ref": "#/components/parameters/PageSize" },
@@ -1107,6 +1293,244 @@
           "401": { "$ref": "#/components/responses/AuthRequired" },
           "403": { "$ref": "#/components/responses/AccessDenied" },
           "409": { "description": "EMAIL_ALREADY_EXISTS or APPLICATION_ALREADY_PENDING" }
+        }
+      }
+    },
+    "/almohit/api/buyer/suppliers": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "List procurement suppliers",
+        "description": "Buyer only (`group_almohit_buyer`). Company vendors with `supplier_rank > 0`. `q` searches name, phone, mobile, email, vat.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "$ref": "#/components/parameters/Q" },
+          { "name": "country_id", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "state_id", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["name_asc", "name_desc", "newest", "oldest"] } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated suppliers." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" }
+        }
+      },
+      "post": {
+        "tags": ["Buyer"],
+        "summary": "Create supplier/farmer",
+        "description": "Buyer only. Server sets `supplier_rank=1`, `customer_rank=0`, and company. `tax_number` maps to `vat`. Unknown fields: 400 INVALID_FIELDS.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerSupplierBody" }, "example": { "name": "Farmer Ahmed", "city": "Cairo" } } } },
+        "responses": {
+          "201": { "description": "Created supplier." },
+          "400": { "description": "INVALID_FIELDS, NAME_REQUIRED, COUNTRY_NOT_FOUND, STATE_NOT_FOUND, STATE_COUNTRY_MISMATCH" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" }
+        }
+      }
+    },
+    "/almohit/api/buyer/suppliers/{supplier_id}": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "Supplier detail",
+        "parameters": [{ "name": "supplier_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Supplier." },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "SUPPLIER_NOT_FOUND" }
+        }
+      },
+      "patch": {
+        "tags": ["Buyer"],
+        "summary": "Update supplier",
+        "parameters": [{ "name": "supplier_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerSupplierBody" } } } },
+        "responses": {
+          "200": { "description": "Updated supplier." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "SUPPLIER_NOT_FOUND" }
+        }
+      }
+    },
+    "/almohit/api/buyer/products": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "Search purchasable products",
+        "description": "Buyer only. `product.product` with `purchase_ok`. Does not return sales pricelist prices. Category/brand lookup remains `GET /categories` and `GET /brands`.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "$ref": "#/components/parameters/Q" },
+          { "name": "category_id", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "include_children", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "brand_id", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["name_asc", "name_desc", "newest", "oldest"] } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated procurement products." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" }
+        }
+      },
+      "post": {
+        "tags": ["Buyer"],
+        "summary": "Create procurement product",
+        "description": "Buyer only. Native `product.template`/`product.product`. Server sets `purchase_ok=true` and `sale_ok=true` so the item can later be sold to merchants. Default type is storable `product`. Does not accept list_price, standard_price, stock quantities, taxes, or company_id.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerProductBody" }, "example": { "name": "Pomegranate", "type": "product" } } } },
+        "responses": {
+          "201": { "description": "Created product.product." },
+          "400": { "description": "INVALID_FIELDS, NAME_REQUIRED, CATEGORY_NOT_FOUND, BRAND_NOT_FOUND, UOM_NOT_FOUND, image errors" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" }
+        }
+      }
+    },
+    "/almohit/api/buyer/products/{product_id}": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "Procurement product detail",
+        "description": "`product_id` is `product.product` id.",
+        "parameters": [{ "name": "product_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Product." },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "BUYER_PRODUCT_NOT_FOUND" }
+        }
+      }
+    },
+    "/almohit/api/buyer/purchases": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "List own purchase orders",
+        "description": "Buyer only. Scoped to `purchase.order.user_id` of the current user. `q` searches name, vendor name, partner_ref.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "$ref": "#/components/parameters/Q" },
+          { "name": "state", "in": "query", "schema": { "type": "string", "enum": ["draft", "sent", "to approve", "purchase", "done", "cancel"] } },
+          { "name": "supplier_id", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "$ref": "#/components/parameters/DateFrom" },
+          { "$ref": "#/components/parameters/DateTo" },
+          { "$ref": "#/components/parameters/SortNewestOldest" }
+        ],
+        "responses": {
+          "200": { "description": "Paginated purchases." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" }
+        }
+      },
+      "post": {
+        "tags": ["Buyer"],
+        "summary": "Create draft purchase order",
+        "description": "Buyer only. Native `purchase.order`. Server sets `user_id` to the current Buyer. Currency is derived from the vendor/company. Unknown fields including company_id, user_id, state, amount_total: 400 INVALID_FIELDS.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerPurchaseBody" } } } },
+        "responses": {
+          "201": { "description": "Draft purchase." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "SUPPLIER_NOT_FOUND or BUYER_PRODUCT_NOT_FOUND" }
+        }
+      }
+    },
+    "/almohit/api/buyer/purchases/{purchase_id}": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "Purchase detail",
+        "description": "Another buyer's purchase returns 404 PURCHASE_NOT_FOUND.",
+        "parameters": [{ "name": "purchase_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Purchase with lines and receipts." },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "PURCHASE_NOT_FOUND" }
+        }
+      },
+      "patch": {
+        "tags": ["Buyer"],
+        "summary": "Update draft purchase",
+        "description": "Allowed only in native editable states: draft, sent, to approve. Confirmed: 400 PURCHASE_NOT_EDITABLE.",
+        "parameters": [{ "name": "purchase_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerPurchaseBody" } } } },
+        "responses": {
+          "200": { "description": "Updated purchase." },
+          "400": { "description": "INVALID_FIELDS, PURCHASE_NOT_EDITABLE" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "PURCHASE_NOT_FOUND" }
+        }
+      }
+    },
+    "/almohit/api/buyer/purchases/{purchase_id}/confirm": {
+      "post": {
+        "tags": ["Buyer"],
+        "summary": "Confirm purchase",
+        "description": "Calls native `purchase.order.button_confirm()`. Creates incoming `stock.picking` via purchase_stock. Does not write `state` directly.",
+        "parameters": [{ "name": "purchase_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Confirmed purchase plus receipt references." },
+          "400": { "description": "PURCHASE_NOT_EDITABLE, PURCHASE_CONFIRM_FAILED" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "PURCHASE_NOT_FOUND" }
+        }
+      }
+    },
+    "/almohit/api/buyer/receipts": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "List incoming receipts",
+        "description": "Buyer only. Incoming pickings linked to the current Buyer's purchase orders. `status=ready` is accepted as native `assigned`.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/PageSize" },
+          { "$ref": "#/components/parameters/Q" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["draft", "waiting", "confirmed", "assigned", "done", "cancel"] } },
+          { "$ref": "#/components/parameters/DateFrom" },
+          { "$ref": "#/components/parameters/DateTo" },
+          { "$ref": "#/components/parameters/SortNewestOldest" }
+        ],
+        "responses": {
+          "200": { "description": "Paginated receipts." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" }
+        }
+      }
+    },
+    "/almohit/api/buyer/receipts/{picking_id}": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "Receipt detail",
+        "description": "Another buyer's receipt returns 404 RECEIPT_NOT_FOUND.",
+        "parameters": [{ "name": "picking_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": {
+          "200": { "description": "Receipt with move lines." },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "RECEIPT_NOT_FOUND" }
+        }
+      }
+    },
+    "/almohit/api/buyer/receipts/{picking_id}/receive": {
+      "post": {
+        "tags": ["Buyer"],
+        "summary": "Receive incoming stock",
+        "description": "Buyer only. Sets native done quantities then `stock.picking.button_validate()`. Partial quantities follow native backorder. Does not write `qty_available` or `stock.quant`.",
+        "parameters": [{ "name": "picking_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerReceiveBody" } } } },
+        "responses": {
+          "200": { "description": "Updated receipt, including backorders when created." },
+          "400": { "description": "INVALID_FIELDS, RECEIPT_NOT_READY, INVALID_RECEIPT_QUANTITY" },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "RECEIPT_NOT_FOUND" }
         }
       }
     }

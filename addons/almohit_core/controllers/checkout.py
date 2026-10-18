@@ -4,7 +4,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import error, success
-from ..services.customer import require_almohit_group, require_approved_customer
+from ..services.customer import require_approved_customer, require_merchant_group
 from ..services.orders import checkout_cart, serialize_order
 
 
@@ -18,10 +18,7 @@ class AlmohitCheckoutController(http.Controller):
         csrf=False,
     )
     def checkout(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-        )
+        err = require_merchant_group()
         if err:
             return err
         partner, err = require_approved_customer()

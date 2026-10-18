@@ -25,6 +25,20 @@ def require_almohit_group(*group_xmlids):
     )
 
 
+def require_merchant_group():
+    return require_almohit_group("almohit_core.group_almohit_merchant")
+
+
+def require_buyer_user():
+    user, err = require_api_user()
+    if err:
+        return None, err
+    denied = require_almohit_group("almohit_core.group_almohit_buyer")
+    if denied:
+        return None, denied
+    return user, None
+
+
 def require_customer_partner():
     user, err = require_api_user()
     if err:
