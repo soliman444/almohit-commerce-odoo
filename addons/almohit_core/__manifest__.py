@@ -1,6 +1,6 @@
 {
     "name": "Almohit Core",
-    "version": "17.0.1.46.0",
+    "version": "17.0.1.47.0",
     "summary": "Core backend and API for Almohit",
     "category": "Sales",
     "author": "Almohit",
@@ -36,6 +36,7 @@
         "views/product_template_views.xml",
         "views/sale_order_views.xml",
         "views/stock_picking_views.xml",
+        "views/purchase_order_views.xml",
     ],
 
     "assets": {

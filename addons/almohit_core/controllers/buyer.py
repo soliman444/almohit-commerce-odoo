@@ -148,7 +148,28 @@ class AlmohitBuyerController(http.Controller):
         if err:
             return err
         return buyer_service.get_purchase(user, purchase_id)
+    @http.route(
+        "/almohit/api/buyer/purchases/<int:purchase_id>/images/<int:image_id>",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def get_purchase_image(
+        self,
+        purchase_id,
+        image_id,
+        **kwargs
+    ):
+        user, err = require_buyer_user()
+        if err:
+            return err
 
+        return buyer_service.get_purchase_image(
+            user,
+            purchase_id,
+            image_id,
+        )
     @http.route(
         "/almohit/api/buyer/purchases/<int:purchase_id>",
         type="http",

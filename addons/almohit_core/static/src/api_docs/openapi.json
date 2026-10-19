@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Almohit App API",
-    "version": "17.0.1.46.0",
-    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.46.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Merchant (external customer who buys FROM Almohit): cart, checkout, customer orders, invoices, payments, payment transactions, addresses. Buyer (Almohit procurement who buys FROM farmers/suppliers INTO inventory): `/almohit/api/buyer/*` only — suppliers, procurement products, purchase orders, incoming receipts. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Buyer is denied customer commerce. Merchant/marketer/distributor are denied buyer procurement. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Buyer procurement.** Native `res.partner` vendors (`supplier_rank > 0`), `product.template`/`product.product`, `purchase.order`, and incoming `stock.picking`. Confirm uses `purchase.order.button_confirm()`. Receive uses `stock.picking.button_validate()` after setting done quantities. Portal Buyer + sudo after `group_almohit_buyer`. Purchases are scoped to `purchase.order.user_id` of the current Buyer.\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand, buyer procurement product). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand/buyer product: 2 MB. Shop image: 4 MB. Max 2000×2000. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
+    "version": "17.0.1.47.0",
+    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.47.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Merchant (external customer who buys FROM Almohit): cart, checkout, customer orders, invoices, payments, payment transactions, addresses. Buyer (Almohit procurement who buys FROM farmers/suppliers INTO inventory): `/almohit/api/buyer/*` only — suppliers, procurement products, purchase orders, incoming receipts. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Buyer is denied customer commerce. Merchant/marketer/distributor are denied buyer procurement. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Buyer procurement.** Native `res.partner` vendors (`supplier_rank > 0`), `product.template`/`product.product`, `purchase.order`, and incoming `stock.picking`. Confirm uses `purchase.order.button_confirm()`. Receive uses `stock.picking.button_validate()` after setting done quantities. Portal Buyer + sudo after `group_almohit_buyer`. Purchases are scoped to `purchase.order.user_id` of the current Buyer.\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand, buyer procurement product, buyer purchase images). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand/buyer product/purchase images: 2 MB. Shop image: 4 MB. Max 2000×2000. Purchase `images` max 12. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
   },
   "servers": [
     { "url": "/", "description": "This Odoo server" }
@@ -598,6 +598,25 @@
           "remove": { "type": "boolean", "description": "PATCH only. Unlink this line." }
         }
       },
+      "PurchaseImageInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["image_base64", "image_content_type"],
+        "properties": {
+          "name": { "type": "string", "example": "farmer-goods-1.jpg" },
+          "image_base64": { "type": "string", "description": "Base64 encoded image data." },
+          "image_content_type": { "type": "string", "enum": ["image/jpeg", "image/png", "image/webp"] }
+        }
+      },
+      "PurchaseImage": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "content_type": { "type": "string" },
+          "url": { "type": "string", "example": "/almohit/api/buyer/purchases/21/images/45" }
+        }
+      },
       "BuyerPurchase": {
         "type": "object",
         "properties": {
@@ -615,7 +634,9 @@
           "receipt_states": { "type": "array", "items": { "type": "string" } },
           "notes": { "type": "string", "nullable": true },
           "lines": { "type": "array", "items": { "$ref": "#/components/schemas/BuyerPurchaseLine" } },
-          "receipts": { "type": "array", "items": { "$ref": "#/components/schemas/BuyerReceipt" } }
+          "receipts": { "type": "array", "items": { "$ref": "#/components/schemas/BuyerReceipt" } },
+          "image_count": { "type": "integer", "example": 3 },
+          "images": { "type": "array", "items": { "$ref": "#/components/schemas/PurchaseImage" } }
         }
       },
       "BuyerPurchaseBody": {
@@ -630,6 +651,11 @@
             "type": "array",
             "items": { "$ref": "#/components/schemas/BuyerPurchaseLineBody" },
             "example": [{ "product_id": 145, "quantity": 100, "price_unit": 8.5 }]
+          },
+          "images": {
+            "type": "array",
+            "maxItems": 12,
+            "items": { "$ref": "#/components/schemas/PurchaseImageInput" }
           }
         }
       },
@@ -1428,7 +1454,7 @@
       "post": {
         "tags": ["Buyer"],
         "summary": "Create draft purchase order",
-        "description": "Buyer only. Native `purchase.order`. Server sets `user_id` to the current Buyer. Currency is derived from the vendor/company. Unknown fields including company_id, user_id, state, amount_total: 400 INVALID_FIELDS.",
+        "description": "Buyer only. Native `purchase.order`. Server sets `user_id` to the current Buyer. Currency is derived from the vendor/company. Optional `images` (max 12) uses JPEG/PNG/WebP. Unknown fields including company_id, user_id, state, amount_total: 400 INVALID_FIELDS.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerPurchaseBody" } } } },
         "responses": {
           "201": { "description": "Draft purchase." },
@@ -1443,7 +1469,7 @@
       "get": {
         "tags": ["Buyer"],
         "summary": "Purchase detail",
-        "description": "Another buyer's purchase returns 404 PURCHASE_NOT_FOUND.",
+        "description": "Another buyer's purchase returns 404 PURCHASE_NOT_FOUND. Detail includes `image_count` and `images` with URLs under `/almohit/api/buyer/purchases/{id}/images/{image_id}`.",
         "parameters": [{ "name": "purchase_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
           "200": { "description": "Purchase with lines and receipts." },
@@ -1455,7 +1481,7 @@
       "patch": {
         "tags": ["Buyer"],
         "summary": "Update draft purchase",
-        "description": "Allowed only in native editable states: draft, sent, to approve. Confirmed: 400 PURCHASE_NOT_EDITABLE.",
+        "description": "Allowed only in native editable states: draft, sent, to approve. Optional `images` (max 12). Confirmed: 400 PURCHASE_NOT_EDITABLE.",
         "parameters": [{ "name": "purchase_id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BuyerPurchaseBody" } } } },
         "responses": {
@@ -1479,6 +1505,30 @@
           "401": { "$ref": "#/components/responses/AuthRequired" },
           "403": { "$ref": "#/components/responses/AccessDenied" },
           "404": { "description": "PURCHASE_NOT_FOUND" }
+        }
+      }
+    },
+    "/almohit/api/buyer/purchases/{purchase_id}/images/{image_id}": {
+      "get": {
+        "tags": ["Buyer"],
+        "summary": "Get purchase image",
+        "description": "Returns an image attached to a purchase order owned by the current Buyer.",
+        "parameters": [
+          { "name": "purchase_id", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "image_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image binary",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {}
+            }
+          },
+          "401": { "$ref": "#/components/responses/AuthRequired" },
+          "403": { "$ref": "#/components/responses/AccessDenied" },
+          "404": { "description": "Purchase or image not found" }
         }
       }
     },

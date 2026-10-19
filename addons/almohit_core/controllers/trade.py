@@ -58,6 +58,8 @@ class AlmohitTradeController(http.Controller):
             "shop_image_base64",
             "shop_image_content_type",
             "role",
+            "latitude",
+            "longitude",    
         }
         if extra_keys:
             return error(

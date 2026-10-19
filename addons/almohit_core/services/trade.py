@@ -91,11 +91,14 @@ def serialize_application(application):
             else None
         ),
         "merchant_email": application.partner_id.email or None,
+        "latitude": application.partner_id.partner_latitude or None,
+        "longitude": application.partner_id.partner_longitude or None,
     }
 
 
 def create_own_application(env, partner, payload):
     payload = dict(payload or {})
+
     # Never trust client identity or workflow fields.
     payload.pop("partner_id", None)
     payload.pop("status", None)
@@ -117,17 +120,60 @@ def create_own_application(env, partner, payload):
     if payment_method and payment_method not in PAYMENT_METHODS:
         return None, INVALID_PAYMENT_METHOD
 
-    role = (payload.get("role") or partner.almohit_app_role or "merchant").strip().lower()
+    role = (
+        payload.get("role")
+        or partner.almohit_app_role
+        or "merchant"
+    ).strip().lower()
+
     if role not in APP_ROLES:
         return None, INVALID_ROLE
+
+    # Validate location coordinates.
+    try:
+        latitude = (
+            float(payload["latitude"])
+            if payload.get("latitude") not in (None, "")
+            else None
+        )
+
+        longitude = (
+            float(payload["longitude"])
+            if payload.get("longitude") not in (None, "")
+            else None
+        )
+
+    except (TypeError, ValueError):
+        return None, error(
+            "INVALID_LOCATION",
+            "Latitude and longitude must be valid numbers.",
+            400,
+        )
+
+    if latitude is not None and not (-90 <= latitude <= 90):
+        return None, error(
+            "INVALID_LOCATION",
+            "Latitude must be between -90 and 90.",
+            400,
+        )
+
+    if longitude is not None and not (-180 <= longitude <= 180):
+        return None, error(
+            "INVALID_LOCATION",
+            "Longitude must be between -180 and 180.",
+            400,
+        )
 
     image_b64, image_err = _decode_image(
         {
             "image_base64": payload.get("shop_image_base64"),
-            "image_content_type": payload.get("shop_image_content_type"),
+            "image_content_type": payload.get(
+                "shop_image_content_type"
+            ),
         },
         max_bytes=SHOP_IMAGE_MAX_BYTES,
     )
+
     if image_err:
         return None, image_err
 
@@ -135,28 +181,68 @@ def create_own_application(env, partner, payload):
         "partner_id": partner.id,
         "requested_role": role,
         "company_name": company_name,
-        "tax_number": (payload.get("tax_number") or "").strip() or False,
-        "business_type": (payload.get("business_type") or "").strip() or False,
-        "phone": (payload.get("phone") or "").strip() or False,
-        "street": (payload.get("street") or payload.get("address") or "").strip() or False,
-        "city": (payload.get("city") or "").strip() or False,
-        "manager_name": (payload.get("manager_name") or "").strip() or False,
-        "employee_name": (payload.get("employee_name") or "").strip() or False,
-        "bank_account": (payload.get("bank_account") or "").strip() or False,
+        "tax_number": (
+            payload.get("tax_number") or ""
+        ).strip() or False,
+        "business_type": (
+            payload.get("business_type") or ""
+        ).strip() or False,
+        "phone": (
+            payload.get("phone") or ""
+        ).strip() or False,
+        "street": (
+            payload.get("street")
+            or payload.get("address")
+            or ""
+        ).strip() or False,
+        "city": (
+            payload.get("city") or ""
+        ).strip() or False,
+        "manager_name": (
+            payload.get("manager_name") or ""
+        ).strip() or False,
+        "employee_name": (
+            payload.get("employee_name") or ""
+        ).strip() or False,
+        "bank_account": (
+            payload.get("bank_account") or ""
+        ).strip() or False,
         "payment_method": payment_method or False,
-        "notes": (payload.get("notes") or "").strip() or False,
+        "notes": (
+            payload.get("notes") or ""
+        ).strip() or False,
     }
+
     if image_b64:
         values["shop_image"] = image_b64
 
     try:
         application = _applications(env).create(values)
+
     except ValidationError:
         return None, APPLICATION_ALREADY_PENDING
+
     except UserError:
-        return None, error("INVALID_IMAGE_DATA", "Image data is invalid.", 400)
+        return None, error(
+            "INVALID_IMAGE_DATA",
+            "Image data is invalid.",
+            400,
+        )
+
+    partner_values = {}
+
     if partner.almohit_app_role != role:
-        partner.write({"almohit_app_role": role})
+        partner_values["almohit_app_role"] = role
+
+    if latitude is not None:
+        partner_values["partner_latitude"] = latitude
+
+    if longitude is not None:
+        partner_values["partner_longitude"] = longitude
+
+    if partner_values:
+        partner.write(partner_values)
+
     return application, None
 
 
@@ -224,13 +310,55 @@ def create_recruited_merchant(env, marketer, payload):
     )
     if image_err:
         return None, image_err
+    
+    try:
+        latitude = (
+            float(payload["latitude"])
+            if payload.get("latitude") not in (None, "")
+            else None
+        )
+        longitude = (
+            float(payload["longitude"])
+            if payload.get("longitude") not in (None, "")
+            else None
+        )
+    except (TypeError, ValueError):
+        return None, error(
+            "INVALID_LOCATION",
+            "Latitude and longitude must be valid numbers.",
+            400,
+        )
 
+    if latitude is not None and not (-90 <= latitude <= 90):
+        return None, error(
+            "INVALID_LOCATION",
+            "Latitude must be between -90 and 90.",
+            400,
+        )
+
+    if longitude is not None and not (-180 <= longitude <= 180):
+        return None, error(
+            "INVALID_LOCATION",
+            "Longitude must be between -180 and 180.",
+            400,
+        )
     user, code = _register_portal_user(env, name, email, password, phone, "merchant")
     if code:
         return None, code
     partner = user.partner_id
-    partner.write({"almohit_recruited_by_id": marketer.id})
 
+    partner_vals = {
+        "almohit_recruited_by_id": marketer.id,
+    }
+
+    if latitude is not None:
+        partner_vals["partner_latitude"] = latitude
+
+    if longitude is not None:
+        partner_vals["partner_longitude"] = longitude
+
+    partner.write(partner_vals)
+    
     values = {
         "partner_id": partner.id,
         "requested_role": "merchant",

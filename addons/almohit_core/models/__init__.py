@@ -15,3 +15,4 @@ from . import account_partial_reconcile
 from . import res_config_settings
 from . import whatsapp_account
 from . import whatsapp_session_log
+from . import purchase_order

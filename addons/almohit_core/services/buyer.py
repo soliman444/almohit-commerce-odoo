@@ -1,6 +1,8 @@
 import math
-from datetime import datetime, time
+import base64
 
+from datetime import datetime, time
+from odoo import http
 from odoo.exceptions import UserError, ValidationError
 from .admin_products import PRODUCT_IMAGE_MAX_BYTES, _decode_image
 from .api import (
@@ -43,8 +45,27 @@ PRODUCT_CREATE_FIELDS = {
     "image_base64",
     "image_content_type",
 }
-PURCHASE_CREATE_FIELDS = {"supplier_id", "date_order", "notes", "lines"}
-PURCHASE_PATCH_FIELDS = {"supplier_id", "notes", "lines"}
+PURCHASE_CREATE_FIELDS = {
+    "supplier_id",
+    "date_order",
+    "notes",
+    "lines",
+    "images",
+}
+
+PURCHASE_PATCH_FIELDS = {
+    "supplier_id",
+    "notes",
+    "lines",
+    "images",
+}
+PURCHASE_IMAGE_FIELDS = {
+    "name",
+    "image_base64",
+    "image_content_type",
+}
+
+PURCHASE_IMAGE_MAX_COUNT = 12
 PURCHASE_LINE_CREATE_FIELDS = {"product_id", "quantity", "price_unit", "planned_date"}
 PURCHASE_LINE_PATCH_FIELDS = {
     "id",
@@ -108,6 +129,86 @@ def _text(value):
         return ""
     return str(value).strip()
 
+def _prepare_purchase_images(images):
+    if images in (None, False):
+        return [], None
+
+    if not isinstance(images, list):
+        return None, error(
+            "INVALID_FIELDS",
+            "images must be an array.",
+            400,
+        )
+
+    if len(images) > PURCHASE_IMAGE_MAX_COUNT:
+        return None, error(
+            "TOO_MANY_IMAGES",
+            "A purchase order can have at most 12 images.",
+            400,
+        )
+
+    prepared = []
+
+    for index, image in enumerate(images):
+        if not isinstance(image, dict):
+            return None, error(
+                "INVALID_FIELDS",
+                "Each image must be an object.",
+                400,
+            )
+
+        err = _reject_unknown(image, PURCHASE_IMAGE_FIELDS)
+        if err:
+            return None, err
+
+        image_b64, image_err = _decode_image(
+            image,
+            max_bytes=PRODUCT_IMAGE_MAX_BYTES,
+        )
+        if image_err:
+            return None, image_err
+
+        if not image_b64:
+            return None, error(
+                "INVALID_IMAGE_DATA",
+                "Image data is required.",
+                400,
+            )
+
+        prepared.append({
+            "name": _text(image.get("name")) or "purchase-image-%s" % (index + 1),
+            "datas": image_b64,
+            "mimetype": _text(image.get("image_content_type")),
+        })
+
+    return prepared, None
+
+def _create_purchase_images(order, prepared_images):
+    if not prepared_images:
+        return
+
+    Attachment = order.env["ir.attachment"].sudo()
+
+    attachment_ids = []
+
+    for image in prepared_images:
+        attachment = Attachment.create({
+            "name": image["name"],
+            "type": "binary",
+            "datas": image["datas"],
+            "mimetype": image["mimetype"],
+            "res_model": "purchase.order",
+            "res_id": order.id,
+        })
+        attachment_ids.append(attachment.id)
+
+    if attachment_ids:
+        order.sudo().write({
+            "almohit_purchase_image_ids": [
+                (4, attachment_id)
+                for attachment_id in attachment_ids
+            ],
+        })
 
 def _reject_unknown(payload, allowed):
     extra = set(payload) - allowed
@@ -450,9 +551,22 @@ def serialize_purchase(order, detail=False):
         "buyer": _named(order.user_id),
         "receipt_count": len(incoming),
         "receipt_states": sorted({picking.state for picking in incoming}),
+        "image_count": len(order.almohit_purchase_image_ids),
     }
     if detail:
         item["notes"] = order.notes or None
+        item["images"] = [
+            {
+                "id": attachment.id,
+                "name": attachment.name or "",
+                "content_type": attachment.mimetype or None,
+                "url": (
+                    "/almohit/api/buyer/purchases/%s/images/%s"
+                    % (order.id, attachment.id)
+                ),
+            }
+            for attachment in order.almohit_purchase_image_ids
+        ]
         item["lines"] = [
             serialize_purchase_line(line)
             for line in order.order_line.filtered(lambda rec: not rec.display_type)
@@ -719,10 +833,15 @@ def create_buyer_product(user, payload):
     err = _reject_unknown(payload, PRODUCT_CREATE_FIELDS)
     if err:
         return err
-    env = user.env.sudo()
+
+    env = user.env
+
     name = _text(payload.get("name"))
     if not name:
         return error("NAME_REQUIRED", "Product name is required.", 400)
+
+    Template = env["product.template"].sudo()
+
     vals = {
         "name": name,
         "purchase_ok": True,
@@ -730,9 +849,10 @@ def create_buyer_product(user, payload):
         "active": True,
         "type": "product",
     }
-    Template = env["product.template"]
+
     if "detailed_type" in Template._fields:
         vals["detailed_type"] = "product"
+
     product_type = payload.get("type")
     if product_type not in (None, ""):
         product_type = _text(product_type)
@@ -742,57 +862,118 @@ def create_buyer_product(user, payload):
                 "type must be one of: consu, service, product.",
                 400,
             )
+
         vals["type"] = product_type
+
         if "detailed_type" in Template._fields:
             vals["detailed_type"] = product_type
+
     if "default_code" in payload:
         vals["default_code"] = _text(payload.get("default_code")) or False
+
     if "barcode" in payload:
         vals["barcode"] = _text(payload.get("barcode")) or False
+
     if "purchase_description" in payload:
-        vals["description_purchase"] = _text(payload.get("purchase_description")) or False
+        vals["description_purchase"] = (
+            _text(payload.get("purchase_description")) or False
+        )
+
     if payload.get("category_id") not in (None, "", False):
         category_id = _strict_int(payload.get("category_id"))
-        category = env["product.category"].browse(category_id) if category_id else env["product.category"]
+
+        Category = env["product.category"].sudo()
+        category = Category.browse(category_id) if category_id else Category
+
         if not category_id or not category.exists():
-            return error("CATEGORY_NOT_FOUND", "Category not found.", 400)
+            return error(
+                "CATEGORY_NOT_FOUND",
+                "Category not found.",
+                400,
+            )
+
         vals["categ_id"] = category.id
+
     if payload.get("brand_id") not in (None, "", False):
         brand_id = _strict_int(payload.get("brand_id"))
-        brand = env["almohit.product.brand"].browse(brand_id) if brand_id else env["almohit.product.brand"]
+
+        Brand = env["almohit.product.brand"].sudo()
+        brand = Brand.browse(brand_id) if brand_id else Brand
+
         if not brand_id or not brand.exists() or not brand.active:
-            return error("BRAND_NOT_FOUND", "Brand not found.", 400)
+            return error(
+                "BRAND_NOT_FOUND",
+                "Brand not found.",
+                400,
+            )
+
         vals["almohit_brand_id"] = brand.id
-    Uom = env["uom.uom"]
+
+    Uom = env["uom.uom"].sudo()
+
     if payload.get("uom_id") not in (None, "", False):
         uom_id = _strict_int(payload.get("uom_id"))
         uom = Uom.browse(uom_id) if uom_id else Uom
+
         if not uom_id or not uom.exists():
-            return error("UOM_NOT_FOUND", "Unit of measure not found.", 400)
+            return error(
+                "UOM_NOT_FOUND",
+                "Unit of measure not found.",
+                400,
+            )
+
         vals["uom_id"] = uom.id
+
     if payload.get("uom_po_id") not in (None, "", False):
         uom_po_id = _strict_int(payload.get("uom_po_id"))
         uom_po = Uom.browse(uom_po_id) if uom_po_id else Uom
+
         if not uom_po_id or not uom_po.exists():
-            return error("UOM_NOT_FOUND", "Purchase unit of measure not found.", 400)
+            return error(
+                "UOM_NOT_FOUND",
+                "Purchase unit of measure not found.",
+                400,
+            )
+
         vals["uom_po_id"] = uom_po.id
+
     elif vals.get("uom_id"):
         vals["uom_po_id"] = vals["uom_id"]
-    image_b64, image_err = _decode_image(payload, max_bytes=PRODUCT_IMAGE_MAX_BYTES)
+
+    image_b64, image_err = _decode_image(
+        payload,
+        max_bytes=PRODUCT_IMAGE_MAX_BYTES,
+    )
+
     if image_err:
         return image_err
+
     if image_b64:
         vals["image_1920"] = image_b64
+
     try:
         template = Template.create(vals)
+
     except (UserError, ValidationError) as exc:
-        return _native_error("INVALID_FIELDS", exc)
+        return _native_error(
+            "INVALID_FIELDS",
+            exc,
+        )
+
     product = template.product_variant_id
+
     if not product:
-        return error("BUYER_PRODUCT_NOT_FOUND", "Product variant was not created.", 500)
-    return success(serialize_buyer_product(product), status=201)
+        return error(
+            "BUYER_PRODUCT_NOT_FOUND",
+            "Product variant was not created.",
+            500,
+        )
 
-
+    return success(
+        serialize_buyer_product(product),
+        status=201,
+    )
+    
 def _line_vals(env, payload, required=True):
     if "product_id" not in payload:
         return None, error("INVALID_FIELDS", "product_id is required.", 400)
@@ -852,6 +1033,12 @@ def create_purchase(user, payload):
     err = _reject_unknown(payload, PURCHASE_CREATE_FIELDS)
     if err:
         return err
+
+    prepared_images, err = _prepare_purchase_images(
+        payload.get("images", [])
+    )
+    if err:
+        return err
     env = user.env
     supplier_id = _strict_int(payload.get("supplier_id"))
     supplier = _supplier(env, supplier_id)
@@ -877,9 +1064,19 @@ def create_purchase(user, payload):
         values["notes"] = _text(payload.get("notes")) or False
     try:
         order = env["purchase.order"].sudo().create(values)
+
+        _create_purchase_images(
+            order,
+            prepared_images,
+        )
+
     except (UserError, ValidationError) as exc:
         return _native_error("INVALID_FIELDS", exc)
-    return success(serialize_purchase(order, detail=True), status=201)
+
+    return success(
+        serialize_purchase(order, detail=True),
+        status=201,
+    )
 
 
 def list_purchases(user, kwargs):
@@ -939,6 +1136,66 @@ def get_purchase(user, purchase_id):
         return error("PURCHASE_NOT_FOUND", "Purchase order not found.", 404)
     return success(serialize_purchase(order, detail=True))
 
+def get_purchase_image(user, purchase_id, image_id):
+    order = _owned_purchase(user, purchase_id)
+
+    if not order:
+        return error(
+            "PURCHASE_NOT_FOUND",
+            "Purchase order not found.",
+            404,
+        )
+
+    image_id = _strict_int(image_id)
+
+    if not image_id:
+        return error(
+            "PURCHASE_IMAGE_NOT_FOUND",
+            "Purchase image not found.",
+            404,
+        )
+
+    attachment = order.almohit_purchase_image_ids.filtered(
+        lambda record: record.id == image_id
+    )[:1]
+
+    if not attachment:
+        return error(
+            "PURCHASE_IMAGE_NOT_FOUND",
+            "Purchase image not found.",
+            404,
+        )
+
+    try:
+        content = base64.b64decode(
+            attachment.datas or b""
+        )
+    except Exception:
+        return error(
+            "PURCHASE_IMAGE_NOT_FOUND",
+            "Purchase image not found.",
+            404,
+        )
+
+    return http.Response(
+        content,
+        status=200,
+        headers=[
+            (
+                "Content-Type",
+                attachment.mimetype or "application/octet-stream",
+            ),
+            (
+                "Content-Disposition",
+                'inline; filename="%s"'
+                % (attachment.name or "purchase-image"),
+            ),
+            (
+                "Cache-Control",
+                "private, max-age=3600",
+            ),
+        ],
+    )
 
 def patch_purchase(user, purchase_id, payload):
     err = _reject_unknown(payload, PURCHASE_PATCH_FIELDS)
@@ -953,6 +1210,22 @@ def patch_purchase(user, purchase_id, payload):
             "This purchase order can no longer be edited.",
             400,
         )
+    prepared_images, err = _prepare_purchase_images(
+        payload.get("images", [])
+    )
+    if err:
+        return err
+
+    if (
+        len(order.almohit_purchase_image_ids)
+        + len(prepared_images)
+        > PURCHASE_IMAGE_MAX_COUNT
+    ):
+        return error(
+            "TOO_MANY_IMAGES",
+            "A purchase order can have at most 12 images.",
+            400,
+        )    
     values = {}
     if "supplier_id" in payload:
         supplier = _supplier(user.env, payload.get("supplier_id"))
@@ -1023,13 +1296,29 @@ def patch_purchase(user, purchase_id, payload):
             if update:
                 commands.append((1, rec.id, update))
         values["order_line"] = commands
-    if not values:
-        return success(serialize_purchase(order, detail=True))
+    if not values and not prepared_images:
+        return success(
+            serialize_purchase(order, detail=True)
+        )
+
     try:
-        order.write(values)
+        if values:
+            order.write(values)
+
+        _create_purchase_images(
+            order,
+            prepared_images,
+        )
+
     except (UserError, ValidationError) as exc:
-        return _native_error("PURCHASE_NOT_EDITABLE", exc)
-    return success(serialize_purchase(order, detail=True))
+        return _native_error(
+            "PURCHASE_NOT_EDITABLE",
+            exc,
+        )
+
+    return success(
+        serialize_purchase(order, detail=True)
+    )
 
 
 def confirm_purchase(user, purchase_id):

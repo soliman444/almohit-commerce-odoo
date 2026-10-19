@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_purchase_order_form_almohit_images" model="ir.ui.view">
+        <field name="name">purchase.order.form.almohit.images</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//notebook" position="inside">
+                <page string="صور بضاعة الرعوي">
+                    <group>
+                        <field
+                            name="almohit_purchase_image_ids"
+                            widget="many2many_binary"
+                        />
+                    </group>
+                </page>
+            </xpath>
+
+        </field>
+    </record>
+
+</odoo>

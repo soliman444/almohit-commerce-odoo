@@ -156,5 +156,7 @@ def serialize_auth_user(user, partner=None):
         "role": partner_app_role(partner),
         "payment_term": partner_payment_term(partner.sudo()),
         "price_group": serialize_price_group(partner),
+        "latitude": partner.partner_latitude or None,
+        "longitude": partner.partner_longitude or None,
         "is_staff": not bool(user.share),
     }
