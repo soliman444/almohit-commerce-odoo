@@ -240,3 +240,17 @@ class AlmohitBuyerController(http.Controller):
         if err:
             return err
         return buyer_service.receive_receipt(user, picking_id, payload)
+        
+    @http.route(
+        "/almohit/api/buyer/uoms",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def list_uoms(self, **kwargs):
+        user, err = require_buyer_user()
+        if err:
+            return err
+
+        return buyer_service.list_buyer_uoms(user)

@@ -15,8 +15,3 @@ from . import payments
 from . import online_payments
 from . import buyer
 from . import catalog_migration
-from . import admin_products
-from . import admin_taxonomy
-from . import admin_trade
-from . import admin_orders
-from . import admin_customers

@@ -4,7 +4,7 @@ import base64
 from datetime import datetime, time
 from odoo import http
 from odoo.exceptions import UserError, ValidationError
-from .admin_products import PRODUCT_IMAGE_MAX_BYTES, _decode_image
+from .images import PRODUCT_IMAGE_MAX_BYTES, _decode_image
 from .api import (
     _query_scalar,
     error,
@@ -780,7 +780,27 @@ def _buyer_product_domain(env, kwargs):
             ("product_tmpl_id.name", "ilike", q),
         ]
     return domain, None
+def list_buyer_uoms(user):
+    Uom = user.env["uom.uom"].sudo()
 
+    units = Uom.search(
+        [("active", "=", True)],
+        order="category_id, name, id",
+    )
+
+    return success([
+        {
+            "id": unit.id,
+            "name": unit.name,
+            "category": {
+                "id": unit.category_id.id,
+                "name": unit.category_id.name,
+            },
+            "uom_type": unit.uom_type,
+            "rounding": unit.rounding,
+        }
+        for unit in units
+    ])
 
 def list_buyer_products(user, kwargs):
     env = user.env

@@ -271,3 +271,85 @@ class AlmohitAddressController(http.Controller):
                 400,
             )
         return payload, None
+    @http.route(
+        "/almohit/api/countries",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def list_countries(self, **kwargs):
+        err = require_merchant_group()
+        if err:
+            return err
+
+        countries = request.env["res.country"].sudo().search(
+            [],
+            order="name, id",
+        )
+
+        return success([
+            {
+                "id": country.id,
+                "name": country.name,
+                "code": country.code or None,
+            }
+            for country in countries
+        ])
+
+
+    @http.route(
+        "/almohit/api/states",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def list_states(self, **kwargs):
+        err = require_merchant_group()
+        if err:
+            return err
+
+        country_id = kwargs.get("country_id")
+
+        try:
+            country_id = int(country_id)
+        except (TypeError, ValueError):
+            return error(
+                "INVALID_COUNTRY",
+                "country_id must be a positive integer.",
+                400,
+            )
+
+        if country_id < 1:
+            return error(
+                "INVALID_COUNTRY",
+                "country_id must be a positive integer.",
+                400,
+            )
+
+        country = request.env["res.country"].sudo().browse(country_id)
+
+        if not country.exists():
+            return error(
+                "COUNTRY_NOT_FOUND",
+                "Country not found.",
+                404,
+            )
+
+        states = request.env["res.country.state"].sudo().search(
+            [
+                ("country_id", "=", country.id),
+            ],
+            order="name, id",
+        )
+
+        return success([
+            {
+                "id": state.id,
+                "name": state.name,
+                "code": state.code or None,
+                "country_id": country.id,
+            }
+            for state in states
+        ])    

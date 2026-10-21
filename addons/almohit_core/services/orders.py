@@ -113,80 +113,8 @@ def owned_confirmed_order(env, partner, order_id):
 
 
 ORDER_NOT_FOUND = "ORDER_NOT_FOUND"
-ADMIN_ORDER_STATES = {"sale", "done", "cancel", "sent"}
-ADMIN_PAYMENT_STATES = {"paid", "partial", "not_paid", "reversed"}
 
 
-def admin_storefront_order_domain():
-    return [
-        ("almohit_storefront_order", "=", True),
-        ("state", "!=", "draft"),
-        ("company_id", "=", request.env.company.id),
-    ]
-
-
-def serialize_admin_order(order):
-    data = serialize_order(order)
-    partner = order.partner_id
-    commercial = partner.commercial_partner_id or partner
-    data["customer"] = {
-        "partner_id": commercial.id,
-        "name": commercial.name or partner.name,
-        "email": commercial.email or partner.email or None,
-    }
-    data["item_count"] = int(sum(
-        line.product_uom_qty
-        for line in order.order_line.filtered(lambda rec: not rec.display_type)
-    ))
-    data["note"] = order.note or None
-    return data
-
-
-def list_admin_orders(env, params=None):
-    params = params or {}
-    domain = admin_storefront_order_domain()
-    state = (params.get("state") or "").strip().lower()
-    if state in ADMIN_ORDER_STATES:
-        domain.append(("state", "=", state))
-    query = (params.get("q") or "").strip()
-    if query:
-        domain.extend([
-            "|",
-            "|",
-            "|",
-            ("name", "ilike", query),
-            ("partner_id.name", "ilike", query),
-            ("partner_id.email", "ilike", query),
-            ("client_order_ref", "ilike", query),
-        ])
-    records = env["sale.order"].search(domain, order="id desc", limit=100)
-    rows = [serialize_admin_order(order) for order in records]
-    payment = (params.get("payment") or "").strip().lower()
-    if payment in ADMIN_PAYMENT_STATES:
-        rows = [
-            row
-            for row in rows
-            if (row.get("payment") or {}).get("state") == payment
-        ]
-    return rows
-
-
-def get_admin_order(env, order_id):
-    try:
-        order_id = int(order_id)
-    except (TypeError, ValueError):
-        return None
-    order = env["sale.order"].search(
-        [("id", "=", order_id)] + admin_storefront_order_domain(),
-        limit=1,
-    )
-    if not order:
-        return None
-    return serialize_admin_order(order)
-
-
-def admin_order_summary(env):
-    return {"total": env["sale.order"].search_count(admin_storefront_order_domain())}
 
 
 def _checkout_lines(cart):
@@ -253,17 +181,19 @@ def checkout_cart(partner, payload):
     payload.pop("order_id", None)
 
     shipping_id = payload.get("shipping_address_id")
-    invoice_id = payload.get("invoice_address_id")
-    try:
-        shipping_id = int(shipping_id)
-        invoice_id = int(invoice_id)
-    except (TypeError, ValueError):
-        return None, (
-            "ADDRESS_NOT_FOUND",
-            "Address not found.",
-            404,
-            None,
-        )
+
+    if shipping_id not in (None, "", False):
+        try:
+            shipping_id = int(shipping_id)
+        except (TypeError, ValueError):
+            return None, (
+                "ADDRESS_NOT_FOUND",
+                "Delivery address not found.",
+                404,
+                None,
+            )
+    else:
+        shipping_id = None
 
     SaleOrder = env["sale.order"].sudo()
     cart = SaleOrder._almohit_find_cart(partner)
@@ -289,29 +219,36 @@ def checkout_cart(partner, payload):
             None,
         )
 
-    shipping = owned_address(env, commercial, shipping_id)
-    invoice = owned_address(env, commercial, invoice_id)
-    if not shipping or not invoice:
-        return None, (
-            "ADDRESS_NOT_FOUND",
-            "Address not found.",
-            404,
-            None,
+    # The commercial partner is always the invoice address.
+    invoice = commercial
+
+    # The main commercial partner is also the default delivery address.
+    shipping = commercial
+
+    # If the merchant selected an additional delivery address,
+    # it must belong to this commercial partner.
+    if shipping_id:
+        shipping = owned_address(
+            env,
+            commercial,
+            shipping_id,
         )
-    if shipping.type != "delivery":
-        return None, (
-            "ADDRESS_TYPE_INVALID",
-            "shipping_address_id must be a delivery address.",
-            400,
-            None,
-        )
-    if invoice.type != "invoice":
-        return None, (
-            "ADDRESS_TYPE_INVALID",
-            "invoice_address_id must be an invoice address.",
-            400,
-            None,
-        )
+
+        if not shipping:
+            return None, (
+                "ADDRESS_NOT_FOUND",
+                "Delivery address not found.",
+                404,
+                None,
+            )
+
+        if shipping.type != "delivery":
+            return None, (
+                "ADDRESS_TYPE_INVALID",
+                "shipping_address_id must be a delivery address.",
+                400,
+                None,
+            )
 
     product_error = _validate_line_products(cart)
     if product_error:

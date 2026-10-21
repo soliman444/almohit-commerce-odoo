@@ -2,7 +2,7 @@ from datetime import datetime, time
 
 from odoo.exceptions import UserError, ValidationError
 
-from .admin_products import SHOP_IMAGE_MAX_BYTES, _decode_image
+from .images import SHOP_IMAGE_MAX_BYTES, _decode_image
 from .api import error, parse_date_range_params, _query_scalar
 
 MERCHANT_APPLICATION_STATUSES = ("pending", "approved", "rejected")
@@ -466,76 +466,3 @@ def list_recruited_merchants(env, marketer):
 
 APPLICATION_NOT_FOUND = "APPLICATION_NOT_FOUND"
 APPLICATION_NOT_PENDING = "APPLICATION_NOT_PENDING"
-
-
-def serialize_admin_application(application):
-    data = serialize_application(application)
-    if not data:
-        return None
-    partner = application.partner_id
-    data["customer"] = {
-        "partner_id": partner.id,
-        "name": partner.name,
-        "email": partner.email or None,
-    }
-    data["reviewed_by"] = application.reviewed_by.name if application.reviewed_by else None
-    data["reviewed_at"] = application.reviewed_at
-    return data
-
-
-def list_admin_applications(env, params=None):
-    params = params or {}
-    domain = []
-    status = (params.get("status") or "").strip().lower()
-    if status in ("pending", "approved", "rejected"):
-        domain.append(("status", "=", status))
-    query = (params.get("q") or "").strip()
-    if query:
-        domain.extend([
-            "|",
-            "|",
-            "|",
-            ("company_name", "ilike", query),
-            ("city", "ilike", query),
-            ("partner_id.name", "ilike", query),
-            ("partner_id.email", "ilike", query),
-        ])
-    records = env["almohit.trade.application"].search(
-        domain,
-        order="id desc",
-        limit=100,
-    )
-    return [serialize_admin_application(record) for record in records]
-
-
-def _staff_application(env, application_id):
-    try:
-        application_id = int(application_id)
-    except (TypeError, ValueError):
-        return env["almohit.trade.application"].browse()
-    return env["almohit.trade.application"].browse(application_id)
-
-
-def approve_admin_application(env, application_id):
-    application = _staff_application(env, application_id)
-    if not application.exists():
-        return None, APPLICATION_NOT_FOUND
-    try:
-        application.action_approve()
-    except UserError:
-        return None, APPLICATION_NOT_PENDING
-    return serialize_admin_application(application), None
-
-
-def reject_admin_application(env, application_id, reason=""):
-    application = _staff_application(env, application_id)
-    if not application.exists():
-        return None, APPLICATION_NOT_FOUND
-    try:
-        application.action_reject()
-    except UserError:
-        return None, APPLICATION_NOT_PENDING
-    reason = (reason or "").strip()
-    if reason:
-        application.rejection_reason = reason
-    return serialize_admin_application(application), None
