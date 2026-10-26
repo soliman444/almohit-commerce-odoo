@@ -358,6 +358,22 @@
             "type": "string",
             "enum": ["image/jpeg", "image/png", "image/webp"],
             "description": "Required when shop_image_base64 is sent. GIF, SVG, and PDF are rejected as INVALID_IMAGE_TYPE."
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Optional merchant latitude. Stored in res.partner.partner_latitude.",
+            "example": 15.2985
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Optional merchant longitude. Stored in res.partner.partner_longitude.",
+            "example": 44.2075
           }
         }
       },
@@ -780,14 +796,16 @@
           { "name": "in_stock", "in": "query", "schema": { "type": "string", "enum": ["true", "false"] }, "description": "Else 400 INVALID_FILTER." },
           { "name": "min_moq", "in": "query", "schema": { "type": "number", "minimum": 0 }, "description": "Inclusive. Products with `almohit_min_order_qty >= min_moq`. Number >= 0. Else 400 INVALID_FILTER. If greater than `max_moq`, 400 INVALID_FILTER." },
           { "name": "max_moq", "in": "query", "schema": { "type": "number", "minimum": 0 }, "description": "Inclusive. Products with `almohit_min_order_qty <= max_moq`. Number >= 0. Else 400 INVALID_FILTER." },
-          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["name_asc", "name_desc", "newest", "oldest"] }, "description": "Default `name, id`. `newest`/`oldest` use `create_date` then `id`. Else 400 INVALID_SORT." }
+          { "name": "max_price", "in": "query", "schema": { "type": "number", "minimum": 0 }, "description": "Inclusive partner-pricelist price cap (the card `price`, not `list_price`). Number >= 0. Else 400 INVALID_FILTER. Products without a price are omitted. Approved session required; else 403 WHOLESALE_APPROVAL_REQUIRED. There is no `min_price`." },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["name_asc", "name_desc", "newest", "oldest", "price_asc", "price_desc"] }, "description": "Default `name, id`. `newest`/`oldest` use `create_date` then `id`. `price_asc`/`price_desc` sort by the partner pricelist price shown on the card (not `list_price`). Approved session required; else 403 WHOLESALE_APPROVAL_REQUIRED. Products without a price sort last. Else 400 INVALID_SORT." }
         ],
         "responses": {
           "200": {
             "description": "`data` is `{ items, pagination }`, not a raw product array. Default page=1, page_size=20, max page_size=100.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessCatalogProductList" } } }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" }
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "description": "WHOLESALE_APPROVAL_REQUIRED when `max_price` is sent or `sort` is `price_asc`/`price_desc` and the session partner is not approved." }
         }
       }
     },
@@ -1346,11 +1364,11 @@
       "post": {
         "tags": ["Marketer"],
         "summary": "Recruit a merchant",
-        "description": "Creates a portal merchant plus a pending trade application. Allowlist: name, email, password, phone, company_name, tax_number, business_type, street, address, city, manager_name, employee_name, bank_account, payment_method, notes, shop_image_base64, shop_image_content_type.",
+        "description": "Creates a portal merchant and a trade application, then automatically approves it for an approved marketer. Coordinates are optional and stored on the merchant's res.partner. Allowlist: name, email, password, phone, company_name, tax_number, business_type, street, address, city, manager_name, employee_name, bank_account, payment_method, notes, shop_image_base64, shop_image_content_type, latitude, longitude.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MarketerMerchantBody" } } } },
         "responses": {
           "201": { "description": "Created application." },
-          "400": { "description": "INVALID_FIELDS, NAME_REQUIRED, EMAIL_REQUIRED, PASSWORD_TOO_SHORT, COMPANY_NAME_REQUIRED, INVALID_IMAGE_TYPE, INVALID_IMAGE_DATA, IMAGE_TOO_LARGE, IMAGE_DIMENSIONS_TOO_LARGE, INVALID_PAYMENT_METHOD" },
+          "400": { "description": "INVALID_FIELDS, NAME_REQUIRED, EMAIL_REQUIRED, PASSWORD_TOO_SHORT, COMPANY_NAME_REQUIRED, INVALID_IMAGE_TYPE, INVALID_IMAGE_DATA, IMAGE_TOO_LARGE, IMAGE_DIMENSIONS_TOO_LARGE, INVALID_PAYMENT_METHOD, INVALID_LOCATION"},
           "401": { "$ref": "#/components/responses/AuthRequired" },
           "403": { "$ref": "#/components/responses/AccessDenied" },
           "409": { "description": "EMAIL_ALREADY_EXISTS or APPLICATION_ALREADY_PENDING" }

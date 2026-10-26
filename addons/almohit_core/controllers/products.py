@@ -76,6 +76,25 @@ def _parse_moq_bound(raw, name):
     return value, None
 
 
+def _template_sort_prices(user, templates):
+    if not templates:
+        return {}
+    pricelist = user.partner_id.sudo().property_product_pricelist
+    if not pricelist:
+        return {}
+    return pricelist.sudo()._get_products_price(templates, 1.0) or {}
+
+
+def _finite_price(raw):
+    try:
+        amount = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(amount):
+        return None
+    return amount
+
+
 def _allowlisted_mapping(payload, keys):
     if not isinstance(payload, dict):
         return payload
@@ -217,9 +236,13 @@ class AlmohitProductsController(http.Controller):
                 "min_moq must be less than or equal to max_moq.",
                 400,
             )
+        max_price, max_price_err = _parse_moq_bound(kwargs.get("max_price"), "max_price")
+        if max_price_err:
+            return max_price_err
 
         raw_sort = kwargs.get("sort")
         order = "name, id"
+        price_sort = None
         if raw_sort not in (None, ""):
             if raw_sort == "name_asc":
                 order = "name asc, id asc"
@@ -229,19 +252,28 @@ class AlmohitProductsController(http.Controller):
                 order = "create_date desc, id desc"
             elif raw_sort == "oldest":
                 order = "create_date asc, id asc"
+            elif raw_sort in ("price_asc", "price_desc"):
+                price_sort = raw_sort
             else:
                 return error(
                     "INVALID_SORT",
-                    "sort must be one of: name_asc, name_desc, newest, oldest.",
+                    "sort must be one of: name_asc, name_desc, newest, oldest, price_asc, price_desc.",
                     400,
                 )
+
+        user = request.env.user
+        if (price_sort or max_price is not None) and not may_see_price(user):
+            return error(
+                "WHOLESALE_APPROVAL_REQUIRED",
+                "Wholesale approval is required to filter or sort by price.",
+                403,
+            )
 
         raw_q = kwargs.get("q")
         if isinstance(raw_q, (list, tuple)):
             raw_q = raw_q[0] if raw_q else ""
         q = str(raw_q).strip() if raw_q not in (None, "") else ""
 
-        user = request.env.user
         templates_model = request.env["product.template"].sudo()
         domain = list(SALEABLE_DOMAIN)
         if category_id is not None:
@@ -268,7 +300,38 @@ class AlmohitProductsController(http.Controller):
             domain.append(("almohit_min_order_qty", ">=", min_moq))
         if max_moq is not None:
             domain.append(("almohit_min_order_qty", "<=", max_moq))
-        if in_stock is None:
+        if price_sort or max_price is not None:
+            templates = templates_model.search(domain, order=order)
+            if in_stock is not None:
+                warehouse = company_warehouse(request.env)
+                templates = templates.filtered(
+                    lambda tmpl: template_in_stock(tmpl, warehouse) == in_stock
+                )
+            priced = _template_sort_prices(user, templates)
+            if max_price is not None:
+                def within_max_price(tmpl):
+                    amount = _finite_price(priced.get(tmpl.id))
+                    return amount is not None and amount <= max_price
+
+                templates = templates.filtered(within_max_price)
+            if price_sort:
+                reverse = price_sort == "price_desc"
+
+                def price_sort_key(tmpl):
+                    amount = _finite_price(priced.get(tmpl.id))
+                    if amount is None:
+                        return (1, 0, tmpl.id)
+                    return (0, -amount if reverse else amount, tmpl.id)
+
+                ordered = sorted(templates, key=price_sort_key)
+            else:
+                ordered = list(templates)
+            total = len(ordered)
+            offset = (page - 1) * page_size
+            templates = templates_model.browse(
+                [tmpl.id for tmpl in ordered[offset:offset + page_size]]
+            )
+        elif in_stock is None:
             total = templates_model.search_count(domain)
             templates = templates_model.search(
                 domain,

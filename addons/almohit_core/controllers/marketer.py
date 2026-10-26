@@ -93,6 +93,8 @@ class AlmohitMarketerController(http.Controller):
             "notes",
             "shop_image_base64",
             "shop_image_content_type",
+            "latitude",
+            "longitude",
         }
         if extra_keys:
             return error(
