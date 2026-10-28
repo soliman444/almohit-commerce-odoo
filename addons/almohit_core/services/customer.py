@@ -29,13 +29,34 @@ def require_merchant_group():
     return require_almohit_group("almohit_core.group_almohit_merchant")
 
 
+
 def require_buyer_user():
     user, err = require_api_user()
     if err:
         return None, err
-    denied = require_almohit_group("almohit_core.group_almohit_buyer")
+
+    denied = require_almohit_group(
+        "almohit_core.group_almohit_buyer"
+    )
     if denied:
         return None, denied
+
+    partner = user.partner_id.sudo()
+
+    if not partner or partner.almohit_app_role != "buyer":
+        return None, error(
+            "BUYER_REQUIRED",
+            "Only buyers can access this resource.",
+            403,
+        )
+
+    if partner.almohit_trade_status != "approved":
+        return None, error(
+            "BUYER_APPROVAL_REQUIRED",
+            "Buyer account must be approved by administration.",
+            403,
+        )
+
     return user, None
 
 

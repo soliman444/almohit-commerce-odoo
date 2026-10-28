@@ -119,6 +119,20 @@ class AlmohitTradeApplication(models.Model):
                 "rejection_reason": False,
             })
             rec.partner_id.write(rec._partner_approval_values())
+            
+            if rec.requested_role == "buyer":
+                buyer_group = self.env.ref(
+                    "almohit_core.group_almohit_buyer"
+                )
+                buyer_users = self.env["res.users"].sudo().search([
+                    ("partner_id", "=", rec.partner_id.id),
+                    ("share", "=", True),
+                ])
+                if buyer_users:
+                    buyer_users.write({
+                        "groups_id": [(4, buyer_group.id)],
+                    })
+
             schedule_notification(EVENT_TRADE_APPROVED, rec)
         return True
 

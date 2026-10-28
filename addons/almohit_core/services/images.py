@@ -11,6 +11,13 @@ PRODUCT_IMAGE_MAX_BYTES = 2 * 1024 * 1024
 SHOP_IMAGE_MAX_BYTES = 4 * 1024 * 1024
 IMAGE_MAX_WIDTH = 2000
 IMAGE_MAX_HEIGHT = 2000
+
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/webp": (),
+}
+
 def _decode_image(
     payload,
     max_bytes=PRODUCT_IMAGE_MAX_BYTES,

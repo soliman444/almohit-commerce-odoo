@@ -2,7 +2,10 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import error, read_json_body, success
-from ..services.customer import require_almohit_group, require_customer_partner
+from ..services.customer import (
+    require_almohit_group,
+    require_customer_partner,
+)
 from ..services.trade import (
     APPLICATION_ALREADY_APPROVED,
     APPLICATION_ALREADY_PENDING,
@@ -37,7 +40,14 @@ class AlmohitTradeController(http.Controller):
         partner, err = require_customer_partner()
         if err:
             return err
-
+        if partner.almohit_app_role != "buyer":
+            err = require_almohit_group(
+                "almohit_core.group_almohit_merchant",
+                "almohit_core.group_almohit_marketer",
+                "almohit_core.group_almohit_distributor",
+            )
+            if err:
+                return err
         payload, err = read_json_body()
         if err:
             return err
@@ -67,6 +77,16 @@ class AlmohitTradeController(http.Controller):
                 "One or more trade application fields are not allowed.",
                 400,
             )
+        
+        if partner.almohit_app_role == "buyer":
+            requested_role = payload.get("role", "buyer")
+            if requested_role != "buyer":
+                return error(
+                    "INVALID_ROLE",
+                    "Buyer accounts must request buyer approval.",
+                    400,
+                )
+            payload["role"] = "buyer"
 
         application, code = create_own_application(request.env, partner, payload)
         if code and not isinstance(code, str):
@@ -129,6 +149,13 @@ class AlmohitTradeController(http.Controller):
         partner, err = require_customer_partner()
         if err:
             return err
-
+        if partner.almohit_app_role != "buyer":
+            err = require_almohit_group(
+                "almohit_core.group_almohit_merchant",
+                "almohit_core.group_almohit_marketer",
+                "almohit_core.group_almohit_distributor",
+            )
+            if err:
+                return err
         application = get_latest_own_application(request.env, partner)
         return success(serialize_application(application))

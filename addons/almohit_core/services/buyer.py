@@ -3,6 +3,7 @@ import base64
 
 from datetime import datetime, time
 from odoo import http
+from odoo import SUPERUSER_ID
 from odoo.exceptions import UserError, ValidationError
 from .images import PRODUCT_IMAGE_MAX_BYTES, _decode_image
 from .api import (
@@ -14,7 +15,6 @@ from .api import (
     success,
 )
 from .catalog import image_url, serialize_brand, serialize_category
-
 
 SUPPLIER_FIELDS = {
     "name",
@@ -496,6 +496,8 @@ def serialize_receipt_line(move):
         received = ordered if received <= 0 else received
     return {
         "move_id": move.id,
+        "source_location": _named(move.location_id),
+        "destination_location": _named(move.location_dest_id),
         "product": {
             "id": move.product_id.id,
             "name": move.product_id.display_name,
@@ -1437,6 +1439,68 @@ def _finish_validate(picking, result):
     return None
 
 
+
+def _raw_materials_location(env):
+    """Return the raw materials stock location."""
+    location = env["stock.location"].sudo().browse(17).exists()
+
+    if (
+        not location
+        or location.usage != "internal"
+        or (
+            location.company_id
+            and location.company_id != env.company
+        )
+    ):
+        return False
+
+    return location
+
+
+def _is_raw_material_product(product):
+    """Recognize products in the raw-materials category."""
+    return product.categ_id.complete_name == "المواد الخام - سلال"
+
+
+def _route_raw_material_receipt(picking):
+    """Route raw-material moves to their storage location."""
+    location = _raw_materials_location(picking.env)
+
+    raw_moves = picking.move_ids.filtered(
+        lambda move: (
+            move.state not in ("done", "cancel")
+            and _is_raw_material_product(move.product_id)
+        )
+    )
+
+    if not raw_moves:
+        return None
+
+    if not location:
+        return error(
+            "RAW_MATERIALS_LOCATION_NOT_CONFIGURED",
+            "Raw materials location is not configured.",
+            400,
+        )
+
+    for move in raw_moves:
+        if move.location_dest_id != location:
+            move.write({
+                "location_dest_id": location.id,
+            })
+
+        move_lines = move.move_line_ids.filtered(
+            lambda line: line.state not in ("done", "cancel")
+        )
+
+        for move_line in move_lines:
+            if move_line.location_dest_id != location:
+                move_line.write({
+                    "location_dest_id": location.id,
+                })
+
+    return None
+
 def receive_receipt(user, picking_id, payload):
     err = _reject_unknown(payload, RECEIVE_FIELDS)
     if err:
@@ -1450,6 +1514,10 @@ def receive_receipt(user, picking_id, payload):
             "This receipt cannot be processed.",
             400,
         )
+    
+    # The receipt was already verified as belonging to this Buyer.
+    # Execute native stock operations with Odoo's internal superuser.
+    picking = picking.with_user(SUPERUSER_ID)
     lines = payload.get("lines")
     if not isinstance(lines, list) or not lines:
         return error("INVALID_FIELDS", "lines must be a non-empty array.", 400)
@@ -1460,6 +1528,11 @@ def receive_receipt(user, picking_id, payload):
             picking.action_assign()
     except (UserError, ValidationError) as exc:
         return _native_error("RECEIPT_NOT_READY", exc)
+    
+    routing_error = _route_raw_material_receipt(picking)
+    if routing_error:
+        return routing_error
+    
     moves = {move.id: move for move in picking.move_ids}
     for line in lines:
         if not isinstance(line, dict):
@@ -1482,6 +1555,11 @@ def receive_receipt(user, picking_id, payload):
             _set_move_done_qty(move, qty)
         except (UserError, ValidationError) as exc:
             return _native_error("INVALID_RECEIPT_QUANTITY", exc)
+    
+    routing_error = _route_raw_material_receipt(picking)
+    if routing_error:
+        return routing_error
+
     try:
         result = picking.button_validate()
         _finish_validate(picking, result)
