@@ -47,6 +47,7 @@ PRODUCT_CREATE_FIELDS = {
 }
 PURCHASE_CREATE_FIELDS = {
     "supplier_id",
+    "currency_id",
     "date_order",
     "notes",
     "lines",
@@ -55,6 +56,7 @@ PURCHASE_CREATE_FIELDS = {
 
 PURCHASE_PATCH_FIELDS = {
     "supplier_id",
+    "currency_id",
     "notes",
     "lines",
     "images",
@@ -1051,6 +1053,16 @@ def _parse_create_lines(env, lines):
     return commands, None
 
 
+def _active_currency(env, currency_id):
+    currency_id = _strict_int(currency_id)
+    if not currency_id:
+        return env["res.currency"].browse()
+    return env["res.currency"].sudo().search(
+        [("id", "=", currency_id), ("active", "=", True)],
+        limit=1,
+    )
+
+
 def create_purchase(user, payload):
     err = _reject_unknown(payload, PURCHASE_CREATE_FIELDS)
     if err:
@@ -1072,7 +1084,15 @@ def create_purchase(user, payload):
     lines, err = _parse_create_lines(env, payload.get("lines") or [])
     if err:
         return err
-    currency = getattr(supplier, "property_purchase_currency_id", False) or env.company.currency_id
+    if payload.get("currency_id") not in (None, "", False):
+        currency = _active_currency(env, payload.get("currency_id"))
+        if not currency:
+            return error("CURRENCY_NOT_FOUND", "Currency not found.", 404)
+    else:
+        currency = (
+            getattr(supplier, "property_purchase_currency_id", False)
+            or env.company.currency_id
+        )
     values = {
         "partner_id": supplier.id,
         "user_id": user.id,
@@ -1254,6 +1274,11 @@ def patch_purchase(user, purchase_id, payload):
         if not supplier:
             return error("SUPPLIER_NOT_FOUND", "Supplier not found.", 404)
         values["partner_id"] = supplier.id
+    if "currency_id" in payload:
+        currency = _active_currency(user.env, payload.get("currency_id"))
+        if not currency:
+            return error("CURRENCY_NOT_FOUND", "Currency not found.", 404)
+        values["currency_id"] = currency.id
     if "notes" in payload:
         values["notes"] = _text(payload.get("notes")) or False
     if "lines" in payload:

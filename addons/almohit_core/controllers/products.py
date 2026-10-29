@@ -12,11 +12,13 @@ from ..services.catalog import (
     saleable_template,
     saleable_templates,
     saleable_brands,
+    safe_serialize_template,
     serialize_brand,
     serialize_category,
     serialize_template,
     template_in_stock,
 )
+from ..services.currencies import convert_price_map, resolve_display_currency
 
 _LIST_PRODUCT_KEYS = (
     "id",
@@ -83,6 +85,35 @@ def _template_sort_prices(user, templates):
     if not pricelist:
         return {}
     return pricelist.sudo()._get_products_price(templates, 1.0) or {}
+
+
+def _pricelist_currency(user):
+    pricelist = user.partner_id.sudo().property_product_pricelist
+    if not pricelist:
+        return user.env.company.sudo().currency_id
+    return pricelist.sudo().currency_id or user.env.company.sudo().currency_id
+
+
+def _parse_display_currency(env, kwargs):
+    currency = resolve_display_currency(env, kwargs.get("currency"))
+    if currency is False:
+        return None, error(
+            "INVALID_CURRENCY",
+            "currency must be an active currency code (e.g. SAR, USD).",
+            400,
+        )
+    return currency, None
+
+
+def _priced_for_display(env, user, template_prices, variant_prices, display_currency):
+    if not display_currency:
+        return template_prices, variant_prices, None
+    source = _pricelist_currency(user)
+    return (
+        convert_price_map(env, template_prices, source, display_currency),
+        convert_price_map(env, variant_prices, source, display_currency),
+        display_currency.name,
+    )
 
 
 def _finite_price(raw):
@@ -160,6 +191,10 @@ class AlmohitProductsController(http.Controller):
                 "page must be >= 1 and page_size must be between 1 and 100.",
                 400,
             )
+
+        display_currency, currency_err = _parse_display_currency(request.env, kwargs)
+        if currency_err:
+            return currency_err
 
         raw_category_id = kwargs.get("category_id")
         raw_brand_id = kwargs.get("brand_id")
@@ -296,10 +331,15 @@ class AlmohitProductsController(http.Controller):
                 ("product_variant_ids.default_code", "ilike", q),
                 ("product_variant_ids.barcode", "ilike", q),
             ]
-        if min_moq is not None:
+        if min_moq is not None and min_moq > 0:
             domain.append(("almohit_min_order_qty", ">=", min_moq))
         if max_moq is not None:
-            domain.append(("almohit_min_order_qty", "<=", max_moq))
+            # Unset MOQ (False) must still match an upper bound filter.
+            domain += [
+                "|",
+                ("almohit_min_order_qty", "in", (False, 0)),
+                ("almohit_min_order_qty", "<=", max_moq),
+            ]
         if price_sort or max_price is not None:
             templates = templates_model.search(domain, order=order)
             if in_stock is not None:
@@ -308,6 +348,13 @@ class AlmohitProductsController(http.Controller):
                     lambda tmpl: template_in_stock(tmpl, warehouse) == in_stock
                 )
             priced = _template_sort_prices(user, templates)
+            if display_currency:
+                priced = convert_price_map(
+                    request.env,
+                    priced,
+                    _pricelist_currency(user),
+                    display_currency,
+                )
             if max_price is not None:
                 def within_max_price(tmpl):
                     amount = _finite_price(priced.get(tmpl.id))
@@ -350,19 +397,24 @@ class AlmohitProductsController(http.Controller):
             templates = templates[offset:offset + page_size]
         include_price = may_see_price(user)
         template_prices, variant_prices = pricelist_prices(user, templates)
+        template_prices, variant_prices, currency_name = _priced_for_display(
+            request.env, user, template_prices, variant_prices, display_currency,
+        )
         pages = 0 if total == 0 else (total + page_size - 1) // page_size
+        items = []
+        for tmpl in templates:
+            serialized = safe_serialize_template(
+                tmpl,
+                include_price=include_price,
+                template_prices=template_prices,
+                variant_prices=variant_prices,
+                currency_name=currency_name,
+            )
+            if not serialized:
+                continue
+            items.append(_allowlisted_list_product(serialized))
         return success({
-            "items": [
-                _allowlisted_list_product(
-                    serialize_template(
-                        tmpl,
-                        include_price=include_price,
-                        template_prices=template_prices,
-                        variant_prices=variant_prices,
-                    )
-                )
-                for tmpl in templates
-            ],
+            "items": items,
             "pagination": {
                 "page": page,
                 "page_size": page_size,
@@ -381,6 +433,10 @@ class AlmohitProductsController(http.Controller):
         csrf=False,
     )
     def product_detail(self, product_id, **kwargs):
+        display_currency, currency_err = _parse_display_currency(request.env, kwargs)
+        if currency_err:
+            return currency_err
+
         user = request.env.user
         tmpl = saleable_template(request.env, product_id)
         if not tmpl:
@@ -392,15 +448,24 @@ class AlmohitProductsController(http.Controller):
 
         include_price = may_see_price(user)
         template_prices, variant_prices = pricelist_prices(user, tmpl)
-        return success(
-            serialize_template(
-                tmpl,
-                include_price=include_price,
-                template_prices=template_prices,
-                variant_prices=variant_prices,
-                detail=True,
-            )
+        template_prices, variant_prices, currency_name = _priced_for_display(
+            request.env, user, template_prices, variant_prices, display_currency,
         )
+        serialized = safe_serialize_template(
+            tmpl,
+            include_price=include_price,
+            template_prices=template_prices,
+            variant_prices=variant_prices,
+            detail=True,
+            currency_name=currency_name,
+        )
+        if not serialized:
+            return error(
+                "PRODUCT_NOT_FOUND",
+                "Product not found.",
+                404,
+            )
+        return success(serialized)
 
     @http.route(
         "/almohit/api/categories",
