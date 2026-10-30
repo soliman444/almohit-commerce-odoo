@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="seq_almohit_warehouse_transfer" model="ir.sequence">
+        <field name="name">Almohit Warehouse Transfer</field>
+        <field name="code">almohit.warehouse.transfer</field>
+        <field name="prefix">WH/TR/</field>
+        <field name="padding">5</field>
+        <field name="company_id" eval="False"/>
+    </record>
+    <record id="seq_almohit_inventory_session" model="ir.sequence">
+        <field name="name">Almohit Inventory Session</field>
+        <field name="code">almohit.inventory.session</field>
+        <field name="prefix">WH/INV/</field>
+        <field name="padding">5</field>
+        <field name="company_id" eval="False"/>
+    </record>
+</odoo>

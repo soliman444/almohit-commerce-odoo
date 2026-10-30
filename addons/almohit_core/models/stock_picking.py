@@ -1,4 +1,4 @@
-from odoo import api, models
+from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 from ..services.payments import order_allows_distribution
@@ -12,6 +12,35 @@ from ..services.whatsapp import (
 
 class StockPicking(models.Model):
     _inherit = "stock.picking"
+
+    almohit_dispatch_state = fields.Selection(
+        selection=[
+            ("pending", "Pending warehouse dispatch"),
+            ("dispatched", "Dispatched from warehouse"),
+        ],
+        string="Warehouse Dispatch State",
+        default="pending",
+        index=True,
+        copy=False,
+    )
+    almohit_dispatch_picking_id = fields.Many2one(
+        "stock.picking",
+        string="Warehouse Dispatch Picking",
+        copy=False,
+        readonly=True,
+    )
+    almohit_storefront_delivery = fields.Boolean(
+        string="Almohit Storefront Delivery",
+        compute="_compute_almohit_storefront_delivery",
+        store=True,
+        index=True,
+    )
+
+    @api.depends("sale_id", "sale_id.almohit_storefront_order", "origin")
+    def _compute_almohit_storefront_delivery(self):
+        for picking in self:
+            sale = picking._almohit_storefront_sale()
+            picking.almohit_storefront_delivery = bool(sale)
 
     def _almohit_requires_payment_to_assign(self):
         self.ensure_one()

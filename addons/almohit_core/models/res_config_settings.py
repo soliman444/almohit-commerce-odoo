@@ -1,5 +1,6 @@
 from odoo import _, fields, models
 
+from ..services.warehouse_common import ICP_RECEIPT_MODE
 from ..services.whatsapp import (
     ICP_ACCOUNT_PHONE,
     ICP_ENABLED,
@@ -12,6 +13,21 @@ from ..services.whatsapp import (
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
+    almohit_receipt_validation_mode = fields.Selection(
+        selection=[
+            ("both", "Buyer and Warehouse Manager"),
+            ("warehouse_only", "Warehouse Manager only"),
+            ("buyer_only", "Buyer only"),
+        ],
+        string="Purchase Receipt Validation",
+        help=(
+            "Controls who may validate purchase incoming receipts. "
+            "Default both keeps /almohit/api/buyer/receipts working while "
+            "warehouse managers use /almohit/api/warehouse/receipts."
+        ),
+        default="both",
+        config_parameter=ICP_RECEIPT_MODE,
+    )
     almohit_whatsapp_enabled = fields.Boolean(
         string="Enable WhatsApp Notifications",
         help="When disabled, business operations still succeed and WhatsApp is skipped.",

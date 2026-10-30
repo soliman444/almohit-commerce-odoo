@@ -43,10 +43,16 @@ class AlmohitAuthController(http.Controller):
         if not name:
             return error("NAME_REQUIRED", "Name is required.", 400)
 
-        if role not in ("merchant", "buyer", "distributor", "marketer"):
+        if role not in (
+            "merchant",
+            "buyer",
+            "distributor",
+            "marketer",
+            "warehouse_manager",
+        ):
             return error(
                 "INVALID_ROLE",
-                "Role must be merchant, buyer, distributor, or marketer.",
+                "Role must be merchant, buyer, distributor, marketer, or warehouse_manager.",
                 400,
             )
 

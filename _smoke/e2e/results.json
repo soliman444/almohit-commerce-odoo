@@ -1,0 +1,266 @@
+[
+  {
+    "case": "Health",
+    "status": "PASS",
+    "evidence": "200 {'ok': True, 'data': {'status': 'ok', 'backend': 'odoo', 'version': '17'}}",
+    "fix": ""
+  },
+  {
+    "case": "Unauth WH dashboard",
+    "status": "PASS",
+    "evidence": "401 {'code': 'AUTHENTICATION_REQUIRED', 'message': 'Authentication required.'}",
+    "fix": ""
+  },
+  {
+    "case": "Auth login buyer",
+    "status": "PASS",
+    "evidence": "200 role=buyer trade=approved err=None",
+    "fix": ""
+  },
+  {
+    "case": "Auth login merchant",
+    "status": "PASS",
+    "evidence": "200 role=merchant trade=approved err=None",
+    "fix": ""
+  },
+  {
+    "case": "Auth login marketer",
+    "status": "PASS",
+    "evidence": "200 role=marketer trade=approved err=None",
+    "fix": ""
+  },
+  {
+    "case": "Auth login distributor",
+    "status": "PASS",
+    "evidence": "200 role=distributor trade=approved err=None",
+    "fix": ""
+  },
+  {
+    "case": "Auth login warehouse_manager",
+    "status": "PASS",
+    "evidence": "200 role=warehouse_manager trade=approved err=None",
+    "fix": ""
+  },
+  {
+    "case": "Buyer denied WH API",
+    "status": "PASS",
+    "evidence": "403 {'code': 'ACCESS_DENIED', 'message': 'You do not have permission to access this resource.'}",
+    "fix": ""
+  },
+  {
+    "case": "Merchant denied buyer API",
+    "status": "PASS",
+    "evidence": "403 {'code': 'ACCESS_DENIED', 'message': 'You do not have permission to access this resource.'}",
+    "fix": ""
+  },
+  {
+    "case": "Distributor deliveries list",
+    "status": "PASS",
+    "evidence": "200 total=0",
+    "fix": ""
+  },
+  {
+    "case": "Marketer merchants list",
+    "status": "PASS",
+    "evidence": "200 {'ok': True, 'data': {'items': [], 'pagination': {'page': 1, 'page_size': 20, 'total': 0, 'pages': 0, 'has_next': False, 'has_previous': False}}}",
+    "fix": ""
+  },
+  {
+    "case": "Buyer create supplier",
+    "status": "PASS",
+    "evidence": "201 id=400 err=None",
+    "fix": ""
+  },
+  {
+    "case": "Buyer create products",
+    "status": "PASS",
+    "evidence": "pid1=188 pid2=189 p1keys=['id', 'template_id', 'name', 'default_code', 'barcode', 'category', 'brand', 'uom', 'purchase_uom', 'image_url', 'active', 'type', 'standard_cost', 'last_purchase_price', 'purchase_ok']",
+    "fix": ""
+  },
+  {
+    "case": "Buyer create PO",
+    "status": "PASS",
+    "evidence": "201 id=19 name=P00019 err=None",
+    "fix": ""
+  },
+  {
+    "case": "Buyer confirm PO",
+    "status": "PASS",
+    "evidence": "200 state=purchase err=None",
+    "fix": ""
+  },
+  {
+    "case": "WH pending receipt for PO",
+    "status": "PASS",
+    "evidence": "recv_id=88 pending=5",
+    "fix": ""
+  },
+  {
+    "case": "WH receipt detail lines",
+    "status": "PASS",
+    "evidence": "n=2 state=assigned",
+    "fix": ""
+  },
+  {
+    "case": "WH split/partial receive",
+    "status": "PASS",
+    "evidence": "200 state=done backorders=[{'id': 89, 'name': 'WH/IN/00011'}] err=None",
+    "fix": ""
+  },
+  {
+    "case": "WH receive retry no duplicate",
+    "status": "PASS",
+    "evidence": "409 {'code': 'RECEIPT_ALREADY_DONE', 'message': 'This receipt was already processed.'}",
+    "fix": ""
+  },
+  {
+    "case": "Stock after receive locations",
+    "status": "PASS",
+    "evidence": "APL@8 0.0->4.0 (d4.0); BAN@8 0.0->3.0 (d3.0); BAN@26 0.0->2.0 (d2.0)",
+    "fix": ""
+  },
+  {
+    "case": "Backorder/remaining receipt visible",
+    "status": "PASS",
+    "evidence": "matching_pending=1 ids=[89]",
+    "fix": ""
+  },
+  {
+    "case": "Receipt mode warehouse_only blocks buyer",
+    "status": "PASS",
+    "evidence": "BUYER warehouse_only RECEIPT_HANDED_TO_WAREHOUSE\nWH warehouse_only INVALID_FIELD",
+    "fix": ""
+  },
+  {
+    "case": "Receipt mode buyer_only blocks WH",
+    "status": "PASS",
+    "evidence": "WH buyer_only RECEIPT_BUYER_ONLY\nBUYER both RECEIPT_NOT_FOUN",
+    "fix": ""
+  },
+  {
+    "case": "Merchant find saleable product",
+    "status": "PASS",
+    "evidence": "product_id=158 free=79.0",
+    "fix": ""
+  },
+  {
+    "case": "Merchant add to cart",
+    "status": "PASS",
+    "evidence": "200 err=None lines=0",
+    "fix": ""
+  },
+  {
+    "case": "Merchant checkout",
+    "status": "PASS",
+    "evidence": "200 order=S00100 id=100 err=None",
+    "fix": ""
+  },
+  {
+    "case": "Satisfy due payment + assign distributor",
+    "status": "PASS",
+    "evidence": "ORDER sale.order(100,) S00100 sale True\nINV [115] ['not_paid'] [85.10000000000001]\nWIZ_ERR You can't register a payment because there is nothing left to pay on the selected journal items.\nAFTER ['paid'] [0.0] allows True\nPICK 90 WH/OUT/00070 assigned 266 pending\nPAY_DONE\n2026-10-30 07:53:21,975 272 INFO ? odoo: Odoo version 17.0-20260908 \n2026-10-30 07:53:21,975 272 INFO ? odoo: Using configuratio",
+    "fix": ""
+  },
+  {
+    "case": "WH issue detail before dispatch",
+    "status": "PASS",
+    "evidence": "200 state=assigned dispatch=pending payment_ok=True err=None",
+    "fix": ""
+  },
+  {
+    "case": "WH issue dispatch",
+    "status": "PASS",
+    "evidence": "200 dispatch_state=dispatched cust_state=assigned dpick=91 err=None",
+    "fix": ""
+  },
+  {
+    "case": "Stock moved Stock\u2192Output",
+    "status": "PASS",
+    "evidence": "AJWA-1KG-001 stock 85.0->84.0; out 0.0->1.0; qty=1.0",
+    "fix": ""
+  },
+  {
+    "case": "Customer delivery still pending after dispatch",
+    "status": "PASS",
+    "evidence": "state=assigned",
+    "fix": ""
+  },
+  {
+    "case": "Dispatch retry no duplicate",
+    "status": "PASS",
+    "evidence": "409 {'code': 'ISSUE_ALREADY_DISPATCHED', 'message': 'Already dispatched from warehouse.'}",
+    "fix": ""
+  },
+  {
+    "case": "Distributor sees assigned delivery",
+    "status": "PASS",
+    "evidence": "200 None status=ready",
+    "fix": ""
+  },
+  {
+    "case": "Distributor complete delivery",
+    "status": "PASS",
+    "evidence": "200 status=delivered err=None",
+    "fix": ""
+  },
+  {
+    "case": "Delivery complete retry safe",
+    "status": "PASS",
+    "evidence": "200 delivered",
+    "fix": ""
+  },
+  {
+    "case": "XLSX HTTP import preview",
+    "status": "PASS",
+    "evidence": "201 id=5 lines=1 err=None",
+    "fix": ""
+  },
+  {
+    "case": "XLSX duplicate checksum",
+    "status": "PASS",
+    "evidence": "409 {'code': 'IMPORT_DUPLICATE', 'message': 'This import file was already uploaded as WH/INV/00005.', 'session_id': 5}",
+    "fix": ""
+  },
+  {
+    "case": "XLSX validation PRODUCT_NOT_FOUND",
+    "status": "PASS",
+    "evidence": "400 {'code': 'INVALID_IMPORT', 'message': 'Import validation failed.', 'errors': [{'row': 2, 'error': 'PRODUCT_NOT_FOUND', 'code': 'NO-SUCH-SKU-XYZ'}]}",
+    "fix": ""
+  },
+  {
+    "case": "XLSX approve inventory (noop qty)",
+    "status": "PASS",
+    "evidence": "200 state=approved err=None",
+    "fix": ""
+  },
+  {
+    "case": "Transfer reject negative qty",
+    "status": "PASS",
+    "evidence": "400 {'code': 'INVALID_FIELDS', 'message': 'product_id and positive quantity are required.'}",
+    "fix": ""
+  },
+  {
+    "case": "Transfer reject invalid product",
+    "status": "PASS",
+    "evidence": "404 {'code': 'PRODUCT_NOT_FOUND', 'message': 'Product not found.'}",
+    "fix": ""
+  },
+  {
+    "case": "Transfer receive+close",
+    "status": "PASS",
+    "evidence": "disp=dispatched recv=received close=closed",
+    "fix": ""
+  },
+  {
+    "case": "Unapproved WH denied",
+    "status": "PASS",
+    "evidence": "403 {'code': 'WAREHOUSE_APPROVAL_REQUIRED', 'message': 'Warehouse manager account must be approved by administration.'}",
+    "fix": ""
+  },
+  {
+    "case": "Unassigned WH denied",
+    "status": "PASS",
+    "evidence": "403 {'code': 'WAREHOUSE_ASSIGNMENT_REQUIRED', 'message': 'No warehouses are assigned to this account yet.'}",
+    "fix": ""
+  }
+]

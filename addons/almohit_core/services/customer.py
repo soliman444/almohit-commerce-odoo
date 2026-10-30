@@ -133,6 +133,76 @@ def require_marketer_partner():
     return partner, None
 
 
+def require_warehouse_manager_user():
+    user, err = require_api_user()
+    if err:
+        return None, err
+    denied = require_almohit_group("almohit_core.group_almohit_warehouse_manager")
+    if denied:
+        return None, denied
+    partner = user.partner_id.sudo()
+    if not partner or partner_app_role(partner) != "warehouse_manager":
+        return None, error(
+            "WAREHOUSE_MANAGER_REQUIRED",
+            "Only warehouse managers can access this resource.",
+            403,
+        )
+    if partner.almohit_trade_status != "approved":
+        return None, error(
+            "WAREHOUSE_APPROVAL_REQUIRED",
+            "Warehouse manager account must be approved by administration.",
+            403,
+        )
+    return user, None
+
+
+def require_warehouse_manager_partner():
+    user, err = require_warehouse_manager_user()
+    if err:
+        return None, err
+    partner = user.partner_id.sudo()
+    if not partner:
+        return None, error(
+            "PARTNER_REQUIRED",
+            "No customer partner is linked to this user.",
+            400,
+        )
+    return partner, None
+
+
+def get_warehouse_assignment(partner):
+    Assignment = partner.env["almohit.warehouse.assignment"].sudo()
+    return Assignment.search(
+        [
+            ("partner_id", "=", partner.id),
+            ("active", "=", True),
+        ],
+        limit=1,
+    )
+
+
+def serialize_warehouse_access(partner):
+    assignment = get_warehouse_assignment(partner)
+    if not assignment:
+        return {
+            "warehouses": [],
+            "default_warehouse_id": None,
+            "permissions": [],
+        }
+    warehouses = [
+        {"id": warehouse.id, "name": warehouse.name}
+        for warehouse in assignment.warehouse_ids.sorted(key=lambda row: (row.name or "", row.id))
+    ]
+    default_id = assignment.default_warehouse_id.id if assignment.default_warehouse_id else None
+    if default_id is None and warehouses:
+        default_id = warehouses[0]["id"]
+    return {
+        "warehouses": warehouses,
+        "default_warehouse_id": default_id,
+        "permissions": assignment.permission_codes(),
+    }
+
+
 def commercial_partner(partner):
     return partner.commercial_partner_id or partner
 
@@ -167,7 +237,7 @@ def serialize_price_group(partner):
 
 def serialize_auth_user(user, partner=None):
     partner = partner or user.partner_id
-    return {
+    payload = {
         "user_id": user.id,
         "partner_id": partner.id,
         "name": partner.name,
@@ -181,3 +251,6 @@ def serialize_auth_user(user, partner=None):
         "longitude": partner.partner_longitude or None,
         "is_staff": not bool(user.share),
     }
+    if partner_app_role(partner) == "warehouse_manager":
+        payload["warehouse_access"] = serialize_warehouse_access(partner.sudo())
+    return payload

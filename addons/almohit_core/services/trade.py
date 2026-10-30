@@ -11,11 +11,18 @@ MERCHANT_APPLICATION_STATUSES = ("pending", "approved", "rejected")
 APPLICATION_ALREADY_PENDING = "APPLICATION_ALREADY_PENDING"
 APPLICATION_ALREADY_APPROVED = "APPLICATION_ALREADY_APPROVED"
 COMPANY_NAME_REQUIRED = "COMPANY_NAME_REQUIRED"
+PHONE_REQUIRED = "PHONE_REQUIRED"
 INVALID_IMAGE = "INVALID_IMAGE"
 INVALID_PAYMENT_METHOD = "INVALID_PAYMENT_METHOD"
 INVALID_ROLE = "INVALID_ROLE"
 PAYMENT_METHODS = {"bank_transfer", "cash", "both"}
-APP_ROLES = {"merchant", "buyer", "distributor", "marketer"}
+APP_ROLES = {
+    "merchant",
+    "buyer",
+    "distributor",
+    "marketer",
+    "warehouse_manager",
+}
 EMAIL_ALREADY_EXISTS = "EMAIL_ALREADY_EXISTS"
 EMAIL_REQUIRED = "EMAIL_REQUIRED"
 NAME_REQUIRED = "NAME_REQUIRED"
@@ -112,14 +119,6 @@ def create_own_application(env, partner, payload):
     if blocked:
         return None, blocked
 
-    company_name = (payload.get("company_name") or "").strip()
-    if not company_name:
-        return None, COMPANY_NAME_REQUIRED
-
-    payment_method = (payload.get("payment_method") or "").strip()
-    if payment_method and payment_method not in PAYMENT_METHODS:
-        return None, INVALID_PAYMENT_METHOD
-
     role = (
         payload.get("role")
         or partner.almohit_app_role
@@ -128,6 +127,22 @@ def create_own_application(env, partner, payload):
 
     if role not in APP_ROLES:
         return None, INVALID_ROLE
+
+    company_name = (payload.get("company_name") or "").strip()
+    phone = (payload.get("phone") or "").strip()
+    if role == "warehouse_manager":
+        if not phone:
+            return None, PHONE_REQUIRED
+        # Display name in backend; clients are not required to send company_name.
+        company_name = company_name or (partner.name or "").strip()
+        if not company_name:
+            return None, NAME_REQUIRED
+    elif not company_name:
+        return None, COMPANY_NAME_REQUIRED
+
+    payment_method = (payload.get("payment_method") or "").strip()
+    if payment_method and payment_method not in PAYMENT_METHODS:
+        return None, INVALID_PAYMENT_METHOD
 
     # Validate location coordinates.
     try:
@@ -187,9 +202,7 @@ def create_own_application(env, partner, payload):
         "business_type": (
             payload.get("business_type") or ""
         ).strip() or False,
-        "phone": (
-            payload.get("phone") or ""
-        ).strip() or False,
+        "phone": phone or False,
         "street": (
             payload.get("street")
             or payload.get("address")

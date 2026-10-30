@@ -3,14 +3,40 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Almohit App API</title>
+    <title>Almohit App API 17.0.1.57.0</title>
     <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css" />
     <style>
-      body { margin: 0; background: #fafafa; }
+      body { margin: 0; background: #f7f7f5; }
       .topbar { display: none; }
+      .almohit-docs-banner {
+        font-family: Georgia, "Times New Roman", serif;
+        padding: 14px 24px;
+        background: linear-gradient(120deg, #1f3d2a, #2f5d3a 55%, #c4a574);
+        color: #f7f3ea;
+      }
+      .almohit-docs-banner h1 {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .almohit-docs-banner p {
+        margin: 6px 0 0;
+        font-size: 0.9rem;
+        opacity: 0.92;
+      }
+      .almohit-docs-banner a { color: #fff4d6; }
     </style>
   </head>
   <body>
+    <header class="almohit-docs-banner">
+      <h1>Almohit App API · 17.0.1.57.0</h1>
+      <p>
+        Swagger UI · session cookie auth ·
+        <a href="/almohit/api/openapi.json">openapi.json</a> ·
+        <a href="/almohit/api/docs/warehouse">warehouse notes</a>
+      </p>
+    </header>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
     <script>
@@ -18,8 +44,14 @@
         window.ui = SwaggerUIBundle({
           url: "/almohit/api/openapi.json",
           dom_id: "#swagger-ui",
-          persistAuthorization: true,
+          deepLinking: true,
+          filter: true,
           tryItOutEnabled: true,
+          persistAuthorization: true,
+          displayRequestDuration: true,
+          docExpansion: "list",
+          tagsSorter: "alpha",
+          operationsSorter: "alpha",
         });
       };
     </script>

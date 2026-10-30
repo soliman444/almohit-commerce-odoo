@@ -28,4 +28,10 @@
         <field name="category_id" ref="module_category_almohit_roles"/>
         <field name="share" eval="True"/>
     </record>
+
+    <record id="group_almohit_warehouse_manager" model="res.groups">
+        <field name="name">Almohit Warehouse Manager</field>
+        <field name="category_id" ref="module_category_almohit_roles"/>
+        <field name="share" eval="True"/>
+    </record>
 </odoo>

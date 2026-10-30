@@ -5,6 +5,7 @@ ALMOHIT_ROLE_GROUP_XMLIDS = {
     "merchant": "almohit_core.group_almohit_merchant",
     "marketer": "almohit_core.group_almohit_marketer",
     "distributor": "almohit_core.group_almohit_distributor",
+    "warehouse_manager": "almohit_core.group_almohit_warehouse_manager",
 }
 
 
@@ -29,6 +30,7 @@ class ResPartner(models.Model):
             ("buyer", "Buyer"),
             ("distributor", "Distributor"),
             ("marketer", "Marketer"),
+            ("warehouse_manager", "Warehouse Manager"),
         ],
         string="Almohit App Role",
         default="merchant",

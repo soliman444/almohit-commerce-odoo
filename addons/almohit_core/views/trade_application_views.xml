@@ -77,6 +77,7 @@
                 <field name="requested_role"/>
                 <filter string="Pending" name="pending" domain="[('status', '=', 'pending')]"/>
                 <filter string="Buyers" name="buyers" domain="[('requested_role', '=', 'buyer')]"/>
+                <filter string="Warehouse Managers" name="warehouse_managers" domain="[('requested_role', '=', 'warehouse_manager')]"/>
                 <filter string="Approved" name="approved" domain="[('status', '=', 'approved')]"/>
                 <filter string="Rejected" name="rejected" domain="[('status', '=', 'rejected')]"/>
             </search>

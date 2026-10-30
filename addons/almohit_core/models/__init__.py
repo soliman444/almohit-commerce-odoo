@@ -16,3 +16,6 @@ from . import res_config_settings
 from . import whatsapp_account
 from . import whatsapp_session_log
 from . import purchase_order
+from . import warehouse_assignment
+from . import warehouse_transfer
+from . import warehouse_inventory

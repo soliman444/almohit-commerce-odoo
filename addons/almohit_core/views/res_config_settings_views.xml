@@ -7,6 +7,19 @@
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
                 <app
+                    string="Almohit Warehouse"
+                    name="almohit_warehouse"
+                    groups="base.group_system">
+                    <block title="Receipt Validation" name="almohit_warehouse_receipt_block">
+                        <setting
+                            id="almohit_receipt_validation_mode_setting"
+                            string="Who validates purchase receipts"
+                            help="both = buyer API and warehouse API; warehouse_only hands off from buyers; buyer_only disables warehouse receive.">
+                            <field name="almohit_receipt_validation_mode"/>
+                        </setting>
+                    </block>
+                </app>
+                <app
                     string="Almohit WhatsApp"
                     name="almohit_whatsapp"
                     groups="base.group_system">

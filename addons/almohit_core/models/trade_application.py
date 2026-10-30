@@ -23,13 +23,16 @@ class AlmohitTradeApplication(models.Model):
             ("buyer", "Buyer"),
             ("distributor", "Distributor"),
             ("marketer", "Marketer"),
+            ("warehouse_manager", "Warehouse Manager"),
         ],
         string="Requested Role",
         default="merchant",
         required=True,
         index=True,
     )
-    company_name = fields.Char(required=True)
+    # Required for merchant/buyer/distributor/marketer via API service.
+    # Warehouse managers may omit it; service fills partner.name.
+    company_name = fields.Char()
     tax_number = fields.Char(string="Commercial Registration")
     business_type = fields.Char()
     phone = fields.Char()
@@ -120,17 +123,20 @@ class AlmohitTradeApplication(models.Model):
             })
             rec.partner_id.write(rec._partner_approval_values())
             
-            if rec.requested_role == "buyer":
-                buyer_group = self.env.ref(
+            if rec.requested_role in ("buyer", "warehouse_manager"):
+                group_xmlid = (
                     "almohit_core.group_almohit_buyer"
+                    if rec.requested_role == "buyer"
+                    else "almohit_core.group_almohit_warehouse_manager"
                 )
-                buyer_users = self.env["res.users"].sudo().search([
+                role_group = self.env.ref(group_xmlid, raise_if_not_found=False)
+                role_users = self.env["res.users"].sudo().search([
                     ("partner_id", "=", rec.partner_id.id),
                     ("share", "=", True),
                 ])
-                if buyer_users:
-                    buyer_users.write({
-                        "groups_id": [(4, buyer_group.id)],
+                if role_group and role_users:
+                    role_users.write({
+                        "groups_id": [(4, role_group.id)],
                     })
 
             schedule_notification(EVENT_TRADE_APPROVED, rec)

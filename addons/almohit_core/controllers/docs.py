@@ -42,3 +42,15 @@ class AlmohitDocsController(http.Controller):
         if request.httprequest.method == "OPTIONS":
             return http.Response("", status=204, headers=CORS_HEADERS)
         return _file_response("openapi.json", "application/json; charset=utf-8")
+
+    @http.route(
+        "/almohit/api/docs/warehouse",
+        type="http",
+        auth="none",
+        methods=["GET", "OPTIONS"],
+        csrf=False,
+    )
+    def warehouse_docs(self, **kwargs):
+        if request.httprequest.method == "OPTIONS":
+            return http.Response("", status=204, headers=CORS_HEADERS)
+        return _file_response("warehouse_api.md", "text/markdown; charset=utf-8")

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_almohit_warehouse_assignment_tree" model="ir.ui.view">
+        <field name="name">almohit.warehouse.assignment.tree</field>
+        <field name="model">almohit.warehouse.assignment</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="partner_id"/>
+                <field name="user_id"/>
+                <field name="warehouse_ids" widget="many2many_tags"/>
+                <field name="default_warehouse_id"/>
+                <field name="perm_stock_read"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_almohit_warehouse_assignment_form" model="ir.ui.view">
+        <field name="name">almohit.warehouse.assignment.form</field>
+        <field name="model">almohit.warehouse.assignment</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="user_id"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="warehouse_ids" widget="many2many_tags"/>
+                            <field name="default_warehouse_id"
+                                      domain="[('id', 'in', warehouse_ids)]"/>
+                        </group>
+                    </group>
+                    <group string="Permissions">
+                        <group>
+                            <field name="perm_stock_read"/>
+                            <field name="perm_receipt"/>
+                            <field name="perm_issue"/>
+                        </group>
+                        <group>
+                            <field name="perm_transfer_create"/>
+                            <field name="perm_transfer_receive"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="notes"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_almohit_warehouse_assignment_search" model="ir.ui.view">
+        <field name="name">almohit.warehouse.assignment.search</field>
+        <field name="model">almohit.warehouse.assignment</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="user_id"/>
+                <field name="warehouse_ids"/>
+                <filter string="Active" name="active" domain="[('active', '=', True)]"/>
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_almohit_warehouse_assignment" model="ir.actions.act_window">
+        <field name="name">Warehouse Assignments</field>
+        <field name="res_model">almohit.warehouse.assignment</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Assign warehouses to an approved warehouse manager.
+            </p>
+        </field>
+    </record>
+
+    <menuitem
+        id="menu_almohit_warehouse_root"
+        name="Almohit Warehouse"
+        parent="stock.menu_stock_root"
+        sequence="90"
+        groups="stock.group_stock_manager"
+    />
+    <menuitem
+        id="menu_almohit_warehouse_assignment"
+        name="Manager Assignments"
+        parent="menu_almohit_warehouse_root"
+        action="action_almohit_warehouse_assignment"
+        sequence="10"
+        groups="stock.group_stock_manager"
+    />
+</odoo>

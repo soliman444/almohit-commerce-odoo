@@ -13,9 +13,25 @@ from ..services.trade import (
     INVALID_IMAGE,
     INVALID_PAYMENT_METHOD,
     INVALID_ROLE,
+    NAME_REQUIRED,
+    PHONE_REQUIRED,
     create_own_application,
     get_latest_own_application,
     serialize_application,
+)
+
+_TRADE_GROUPS = (
+    "almohit_core.group_almohit_buyer",
+    "almohit_core.group_almohit_merchant",
+    "almohit_core.group_almohit_marketer",
+    "almohit_core.group_almohit_distributor",
+    "almohit_core.group_almohit_warehouse_manager",
+)
+
+_COMMERCE_GROUPS = (
+    "almohit_core.group_almohit_merchant",
+    "almohit_core.group_almohit_marketer",
+    "almohit_core.group_almohit_distributor",
 )
 
 
@@ -29,23 +45,19 @@ class AlmohitTradeController(http.Controller):
         csrf=False,
     )
     def create_application(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-            "almohit_core.group_almohit_marketer",
-            "almohit_core.group_almohit_distributor",
-        )
+        err = require_almohit_group(*_TRADE_GROUPS)
         if err:
             return err
         partner, err = require_customer_partner()
         if err:
             return err
-        if partner.almohit_app_role != "buyer":
-            err = require_almohit_group(
-                "almohit_core.group_almohit_merchant",
-                "almohit_core.group_almohit_marketer",
-                "almohit_core.group_almohit_distributor",
-            )
+        role = partner.almohit_app_role or "merchant"
+        if role == "buyer":
+            pass
+        elif role == "warehouse_manager":
+            pass
+        else:
+            err = require_almohit_group(*_COMMERCE_GROUPS)
             if err:
                 return err
         payload, err = read_json_body()
@@ -69,7 +81,7 @@ class AlmohitTradeController(http.Controller):
             "shop_image_content_type",
             "role",
             "latitude",
-            "longitude",    
+            "longitude",
         }
         if extra_keys:
             return error(
@@ -77,8 +89,8 @@ class AlmohitTradeController(http.Controller):
                 "One or more trade application fields are not allowed.",
                 400,
             )
-        
-        if partner.almohit_app_role == "buyer":
+
+        if role == "buyer":
             requested_role = payload.get("role", "buyer")
             if requested_role != "buyer":
                 return error(
@@ -87,6 +99,15 @@ class AlmohitTradeController(http.Controller):
                     400,
                 )
             payload["role"] = "buyer"
+        elif role == "warehouse_manager":
+            requested_role = payload.get("role", "warehouse_manager")
+            if requested_role != "warehouse_manager":
+                return error(
+                    "INVALID_ROLE",
+                    "Warehouse manager accounts must request warehouse_manager approval.",
+                    400,
+                )
+            payload["role"] = "warehouse_manager"
 
         application, code = create_own_application(request.env, partner, payload)
         if code and not isinstance(code, str):
@@ -95,6 +116,18 @@ class AlmohitTradeController(http.Controller):
             return error(
                 "COMPANY_NAME_REQUIRED",
                 "Company name is required.",
+                400,
+            )
+        if code == PHONE_REQUIRED:
+            return error(
+                "PHONE_REQUIRED",
+                "Phone is required for warehouse manager applications.",
+                400,
+            )
+        if code == NAME_REQUIRED:
+            return error(
+                "NAME_REQUIRED",
+                "Name is required.",
                 400,
             )
         if code == APPLICATION_ALREADY_PENDING:
@@ -124,7 +157,7 @@ class AlmohitTradeController(http.Controller):
         if code == INVALID_ROLE:
             return error(
                 "INVALID_ROLE",
-                "Role must be merchant, buyer, distributor, or marketer.",
+                "Role must be merchant, buyer, distributor, marketer, or warehouse_manager.",
                 400,
             )
 
@@ -138,23 +171,15 @@ class AlmohitTradeController(http.Controller):
         csrf=False,
     )
     def get_application(self, **kwargs):
-        err = require_almohit_group(
-            "almohit_core.group_almohit_buyer",
-            "almohit_core.group_almohit_merchant",
-            "almohit_core.group_almohit_marketer",
-            "almohit_core.group_almohit_distributor",
-        )
+        err = require_almohit_group(*_TRADE_GROUPS)
         if err:
             return err
         partner, err = require_customer_partner()
         if err:
             return err
-        if partner.almohit_app_role != "buyer":
-            err = require_almohit_group(
-                "almohit_core.group_almohit_merchant",
-                "almohit_core.group_almohit_marketer",
-                "almohit_core.group_almohit_distributor",
-            )
+        role = partner.almohit_app_role or "merchant"
+        if role not in ("buyer", "warehouse_manager"):
+            err = require_almohit_group(*_COMMERCE_GROUPS)
             if err:
                 return err
         application = get_latest_own_application(request.env, partner)

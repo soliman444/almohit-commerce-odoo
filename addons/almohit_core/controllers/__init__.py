@@ -14,4 +14,5 @@ from . import invoices
 from . import payments
 from . import online_payments
 from . import buyer
+from . import warehouse
 from . import catalog_migration

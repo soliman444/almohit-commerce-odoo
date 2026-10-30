@@ -1527,6 +1527,19 @@ def _route_raw_material_receipt(picking):
     return None
 
 def receive_receipt(user, picking_id, payload):
+    from .warehouse_common import receipt_validation_mode
+
+    # Compatibility policy with warehouse manager receipts:
+    # both (default) | warehouse_only | buyer_only
+    mode = receipt_validation_mode(user.env)
+    if mode == "warehouse_only":
+        return error(
+            "RECEIPT_HANDED_TO_WAREHOUSE",
+            "Purchase receipt validation is handled by warehouse managers. "
+            "Set almohit.receipt_validation_mode to both or buyer_only to restore buyer receive.",
+            403,
+        )
+
     err = _reject_unknown(payload, RECEIVE_FIELDS)
     if err:
         return err

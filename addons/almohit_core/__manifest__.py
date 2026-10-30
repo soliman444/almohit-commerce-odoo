@@ -1,6 +1,6 @@
 {
     "name": "Almohit Core",
-    "version": "17.0.1.52.0",
+    "version": "17.0.1.57.0",
     "summary": "Core backend and API for Almohit",
     "category": "Sales",
     "author": "Almohit",
@@ -14,6 +14,7 @@
         "sale_stock",
         "purchase",
         "purchase_stock",
+        "stock",
         "account",
         "account_payment",
     ],
@@ -27,6 +28,7 @@
         "data/whatsapp_cron.xml",
         "data/whatsapp_parameters.xml",
         "data/notification_template_data.xml",
+        "data/warehouse_sequence_data.xml",
         "views/trade_application_views.xml",
         "views/notification_template_views.xml",
         "views/res_config_settings_views.xml",
@@ -37,6 +39,7 @@
         "views/sale_order_views.xml",
         "views/stock_picking_views.xml",
         "views/purchase_order_views.xml",
+        "views/warehouse_assignment_views.xml",
     ],
 
     "assets": {

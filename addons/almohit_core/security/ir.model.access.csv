@@ -10,3 +10,12 @@ access_almohit_notification_template_system,almohit.notification.template.system
 access_almohit_notification_preview_user,almohit.notification.preview.user,model_almohit_notification_preview,base.group_user,1,1,1,1
 access_almohit_whatsapp_account_system,almohit.whatsapp.account.system,model_almohit_whatsapp_account,base.group_system,1,1,1,1
 access_almohit_whatsapp_session_log_user,almohit.whatsapp.session.log.user,model_almohit_whatsapp_session_log,base.group_user,1,0,0,0
+access_almohit_warehouse_assignment_user,almohit.warehouse.assignment.user,model_almohit_warehouse_assignment,base.group_user,1,1,1,1
+access_almohit_warehouse_assignment_stock_manager,almohit.warehouse.assignment.stock.manager,model_almohit_warehouse_assignment,stock.group_stock_manager,1,1,1,1
+access_almohit_warehouse_transfer_user,almohit.warehouse.transfer.user,model_almohit_warehouse_transfer,base.group_user,1,1,1,1
+access_almohit_warehouse_transfer_line_user,almohit.warehouse.transfer.line.user,model_almohit_warehouse_transfer_line,base.group_user,1,1,1,1
+access_almohit_warehouse_discrepancy_user,almohit.warehouse.discrepancy.user,model_almohit_warehouse_discrepancy,base.group_user,1,1,1,1
+access_almohit_inventory_session_user,almohit.inventory.session.user,model_almohit_inventory_session,base.group_user,1,1,1,1
+access_almohit_inventory_session_line_user,almohit.inventory.session.line.user,model_almohit_inventory_session_line,base.group_user,1,1,1,1
+access_almohit_warehouse_transfer_stock_manager,almohit.warehouse.transfer.stock.manager,model_almohit_warehouse_transfer,stock.group_stock_manager,1,1,1,1
+access_almohit_inventory_session_stock_manager,almohit.inventory.session.stock.manager,model_almohit_inventory_session,stock.group_stock_manager,1,1,1,1
