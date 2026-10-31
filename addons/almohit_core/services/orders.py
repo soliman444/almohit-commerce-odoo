@@ -10,6 +10,11 @@ from .customer import commercial_partner, serialize_payment_term
 from .invoices import customer_invoice_ids, serialize_invoice_summary
 from .payments import serialize_order_payment
 from .stock import company_warehouse, insufficient_stock_error, serialize_delivery
+from .storefront_currency import (
+    StorefrontCurrencyError,
+    requested_currency,
+    storefront_pricelist,
+)
 
 CUSTOMER_ORDER_STATES = ("sale", "done", "sent")
 
@@ -254,16 +259,33 @@ def checkout_cart(partner, payload):
     if product_error:
         return None, product_error
 
-    pricelist = partner.property_product_pricelist
-    if not pricelist:
+    try:
+        selected_currency = requested_currency(env)
+        expected_pricelist = storefront_pricelist(
+            env, partner, selected_currency
+        )
+    except StorefrontCurrencyError as exc:
         return None, (
-            "PRICELIST_REQUIRED",
-            "No pricelist is assigned to this customer.",
+            "INVALID_CURRENCY",
+            str(exc),
             400,
             None,
         )
-    if cart.pricelist_id != pricelist:
-        cart.pricelist_id = pricelist.id
+    if cart.pricelist_id.id != expected_pricelist.id:
+        return None, (
+            "CART_CURRENCY_MISMATCH",
+            "Cart currency differs from the selected currency. "
+            "Update the cart currency before checkout.",
+            409,
+            None,
+        )
+    if cart.currency_id.id != expected_pricelist.currency_id.id:
+        return None, (
+            "CURRENCY_MISMATCH",
+            "Order currency does not match its pricelist.",
+            400,
+            None,
+        )
 
     # Native sale.order.payment_term_id computes from
     # res.partner.property_payment_term_id. Re-apply at confirm so a term
@@ -276,14 +298,6 @@ def checkout_cart(partner, payload):
     })
     cart._recompute_prices()
     cart.invalidate_recordset()
-
-    if cart.currency_id != pricelist.currency_id:
-        return None, (
-            "CURRENCY_MISMATCH",
-            "Order currency does not match the customer pricelist.",
-            400,
-            None,
-        )
 
     try:
         warehouse = company_warehouse(env)

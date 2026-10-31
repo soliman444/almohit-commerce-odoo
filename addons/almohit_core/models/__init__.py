@@ -3,6 +3,7 @@ from . import res_partner
 from . import trade_application
 from . import product_brand
 from . import product_image
+from . import product_pricelist
 from . import product_template
 from . import sale_order
 from . import stock_picking

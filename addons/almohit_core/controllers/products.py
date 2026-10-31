@@ -18,7 +18,17 @@ from ..services.catalog import (
     serialize_template,
     template_in_stock,
 )
-from ..services.currencies import convert_price_map, resolve_display_currency
+from ..services.storefront_currency import (
+    StorefrontCurrencyError,
+    requested_currency,
+    storefront_pricelist,
+)
+
+
+# Currency selection priority for catalog pricing:
+# 1) X-Currency header
+# 2) legacy ?currency= query (compat)
+# 3) merchant default pricelist / company label
 
 _LIST_PRODUCT_KEYS = (
     "id",
@@ -78,42 +88,30 @@ def _parse_moq_bound(raw, name):
     return value, None
 
 
-def _template_sort_prices(user, templates):
+def _template_sort_prices(user, templates, pricelist=None):
     if not templates:
         return {}
-    pricelist = user.partner_id.sudo().property_product_pricelist
+    if pricelist is None:
+        pricelist = user.partner_id.sudo().property_product_pricelist
     if not pricelist:
         return {}
     return pricelist.sudo()._get_products_price(templates, 1.0) or {}
 
 
-def _pricelist_currency(user):
-    pricelist = user.partner_id.sudo().property_product_pricelist
-    if not pricelist:
-        return user.env.company.sudo().currency_id
-    return pricelist.sudo().currency_id or user.env.company.sudo().currency_id
-
-
-def _parse_display_currency(env, kwargs):
-    currency = resolve_display_currency(env, kwargs.get("currency"))
-    if currency is False:
-        return None, error(
-            "INVALID_CURRENCY",
-            "currency must be an active currency code (e.g. SAR, USD).",
-            400,
-        )
-    return currency, None
-
-
-def _priced_for_display(env, user, template_prices, variant_prices, display_currency):
-    if not display_currency:
-        return template_prices, variant_prices, None
-    source = _pricelist_currency(user)
-    return (
-        convert_price_map(env, template_prices, source, display_currency),
-        convert_price_map(env, variant_prices, source, display_currency),
-        display_currency.name,
-    )
+def _storefront_pricing(env, user, kwargs=None):
+    """Resolve catalog prices from the same storefront pricelist as the cart."""
+    kwargs = kwargs or {}
+    try:
+        currency = requested_currency(env, query_code=kwargs.get("currency"))
+    except StorefrontCurrencyError as exc:
+        return None, None, error("INVALID_CURRENCY", str(exc), 400)
+    if not may_see_price(user):
+        return None, currency.name if currency else None, None
+    try:
+        pricelist = storefront_pricelist(env, user.partner_id, currency)
+    except StorefrontCurrencyError as exc:
+        return None, None, error("INVALID_CURRENCY", str(exc), 400)
+    return pricelist, pricelist.currency_id.name, None
 
 
 def _finite_price(raw):
@@ -192,7 +190,9 @@ class AlmohitProductsController(http.Controller):
                 400,
             )
 
-        display_currency, currency_err = _parse_display_currency(request.env, kwargs)
+        pricing_pricelist, currency_name, currency_err = _storefront_pricing(
+            request.env, request.env.user, kwargs,
+        )
         if currency_err:
             return currency_err
 
@@ -347,14 +347,7 @@ class AlmohitProductsController(http.Controller):
                 templates = templates.filtered(
                     lambda tmpl: template_in_stock(tmpl, warehouse) == in_stock
                 )
-            priced = _template_sort_prices(user, templates)
-            if display_currency:
-                priced = convert_price_map(
-                    request.env,
-                    priced,
-                    _pricelist_currency(user),
-                    display_currency,
-                )
+            priced = _template_sort_prices(user, templates, pricing_pricelist)
             if max_price is not None:
                 def within_max_price(tmpl):
                     amount = _finite_price(priced.get(tmpl.id))
@@ -396,9 +389,8 @@ class AlmohitProductsController(http.Controller):
             offset = (page - 1) * page_size
             templates = templates[offset:offset + page_size]
         include_price = may_see_price(user)
-        template_prices, variant_prices = pricelist_prices(user, templates)
-        template_prices, variant_prices, currency_name = _priced_for_display(
-            request.env, user, template_prices, variant_prices, display_currency,
+        template_prices, variant_prices = pricelist_prices(
+            user, templates, pricing_pricelist,
         )
         pages = 0 if total == 0 else (total + page_size - 1) // page_size
         items = []
@@ -433,11 +425,13 @@ class AlmohitProductsController(http.Controller):
         csrf=False,
     )
     def product_detail(self, product_id, **kwargs):
-        display_currency, currency_err = _parse_display_currency(request.env, kwargs)
+        user = request.env.user
+        pricing_pricelist, currency_name, currency_err = _storefront_pricing(
+            request.env, user, kwargs,
+        )
         if currency_err:
             return currency_err
 
-        user = request.env.user
         tmpl = saleable_template(request.env, product_id)
         if not tmpl:
             return error(
@@ -447,9 +441,8 @@ class AlmohitProductsController(http.Controller):
             )
 
         include_price = may_see_price(user)
-        template_prices, variant_prices = pricelist_prices(user, tmpl)
-        template_prices, variant_prices, currency_name = _priced_for_display(
-            request.env, user, template_prices, variant_prices, display_currency,
+        template_prices, variant_prices = pricelist_prices(
+            user, tmpl, pricing_pricelist,
         )
         serialized = safe_serialize_template(
             tmpl,

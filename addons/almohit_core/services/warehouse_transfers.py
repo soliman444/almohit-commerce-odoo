@@ -107,6 +107,52 @@ def count_open_discrepancies(assignment):
     ])
 
 
+def list_stock_variances(partner, kwargs):
+    assignment, err = assignment_or_error(partner)
+    if err:
+        return err
+    page, page_size, page_err = parse_pagination(kwargs)
+    if page_err:
+        return page_err
+    # Keep this domain aligned with dashboard stock_variances.
+    domain = [
+        ("state", "=", "open"),
+        "|",
+        (
+            "transfer_id.source_warehouse_id",
+            "in",
+            assignment.warehouse_ids.ids,
+        ),
+        (
+            "transfer_id.dest_warehouse_id",
+            "in",
+            assignment.warehouse_ids.ids,
+        ),
+    ]
+    rows = partner.env[
+        "almohit.warehouse.discrepancy"
+    ].sudo().search(domain, order="id desc")
+
+    def serialize(row):
+        transfer = row.transfer_id
+        return {
+            "id": row.id,
+            "transfer_id": transfer.id,
+            "transfer_name": transfer.name,
+            "product": named(row.product_id),
+            "source_warehouse": named(transfer.source_warehouse_id),
+            "dest_warehouse": named(transfer.dest_warehouse_id),
+            "qty_expected": float(row.qty_expected or 0.0),
+            "qty_received": float(row.qty_received or 0.0),
+            "qty_difference": float(row.qty_difference or 0.0),
+            "reason": row.reason,
+            "state": row.state,
+            "note": row.note or None,
+        }
+
+    return paginated_success(rows, serialize, page, page_size)
+
+
 def _transfer_domain(assignment, direction):
     domain = [("company_id", "=", assignment.env.company.id)]
     if direction == "incoming":

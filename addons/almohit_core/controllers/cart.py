@@ -223,6 +223,45 @@ class AlmohitCartController(http.Controller):
         return success(serialize_cart(cart))
 
     @http.route(
+        "/almohit/api/cart/currency",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        csrf=False,
+    )
+    def change_cart_currency(self, **kwargs):
+        err = require_merchant_group()
+        if err:
+            return err
+        partner, err = self._require_approved_customer()
+        if err:
+            return err
+        from ..services.storefront_currency import (
+            requested_currency,
+            storefront_pricelist,
+            StorefrontCurrencyError,
+        )
+        try:
+            currency = requested_currency(request.env)
+            if not currency:
+                return error(
+                    "CURRENCY_REQUIRED",
+                    "X-Currency header is required.",
+                    400,
+                )
+            pricelist = storefront_pricelist(
+                request.env, partner, currency
+            )
+        except StorefrontCurrencyError as exc:
+            return error("INVALID_CURRENCY", str(exc), 400)
+        cart = self._carts().sudo()._almohit_get_or_create_cart(partner)
+        try:
+            cart._almohit_set_cart_pricelist(pricelist)
+        except ValueError as exc:
+            return error("CART_CURRENCY_INVALID", str(exc), 400)
+        return success(serialize_cart(cart))
+
+    @http.route(
         "/almohit/api/cart/clear",
         type="http",
         auth="user",

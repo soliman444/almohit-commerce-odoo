@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="product_pricelist_view_form_almohit_currency" model="ir.ui.view">
+        <field name="name">product.pricelist.form.almohit.currency</field>
+        <field name="model">product.pricelist</field>
+        <field name="inherit_id" ref="product.product_pricelist_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='pricelist_config']/group" position="inside">
+                <group name="almohit_currency_variants" string="Almohit Storefront Currencies">
+                    <field
+                        name="almohit_currency_variant_ids"
+                        widget="many2many_tags"
+                        options="{'no_create': True}"
+                        domain="[('id', '!=', id)]"
+                    />
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

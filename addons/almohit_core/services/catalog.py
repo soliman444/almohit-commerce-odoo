@@ -45,14 +45,15 @@ def saleable_template(env, product_id):
     )
 
 
-def pricelist_prices(user, templates):
+def pricelist_prices(user, templates, pricelist=None):
     if not may_see_price(user) or not templates:
         return {}, {}
 
     # Identity was already decided from request.env.user (no sudo).
-    # sudo() only reads the assigned native pricelist and runs Odoo's
-    # pricelist engine for this partner.
-    pricelist = user.partner_id.sudo().property_product_pricelist
+    # sudo() only reads the server-approved storefront pricelist and runs
+    # Odoo's pricelist engine for this partner.
+    if pricelist is None:
+        pricelist = user.partner_id.sudo().property_product_pricelist
     if not pricelist:
         return {}, {}
 

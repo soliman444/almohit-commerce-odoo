@@ -44,8 +44,6 @@ class SaleOrder(models.Model):
         pricelist = partner.property_product_pricelist
         warehouse = company_warehouse(self.env)
         if cart:
-            if pricelist and cart.pricelist_id != pricelist:
-                cart.pricelist_id = pricelist.id
             if warehouse and cart.warehouse_id != warehouse:
                 cart.warehouse_id = warehouse.id
             return cart
@@ -58,6 +56,22 @@ class SaleOrder(models.Model):
         if pricelist:
             values["pricelist_id"] = pricelist.id
         return self.create(values)
+
+    def _almohit_set_cart_pricelist(self, pricelist):
+        self.ensure_one()
+        if not self.almohit_storefront_order:
+            raise ValueError("Not a storefront cart.")
+        if self.state != "draft":
+            raise ValueError("Currency cannot be changed after checkout.")
+        if self.company_id != self.env.company:
+            raise ValueError("Invalid cart company.")
+        if self.pricelist_id.id != pricelist.id:
+            self.write({"pricelist_id": pricelist.id})
+            self._recompute_prices()
+            self.invalidate_recordset()
+        if self.currency_id.id != pricelist.currency_id.id:
+            raise ValueError("Cart currency does not match its pricelist.")
+        return self
 
     def action_confirm(self):
         result = super().action_confirm()

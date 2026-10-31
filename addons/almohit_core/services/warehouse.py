@@ -163,6 +163,7 @@ cancel_transfer = warehouse_transfers.cancel_transfer
 reject_transfer = warehouse_transfers.reject_transfer
 close_transfer = warehouse_transfers.close_transfer
 resolve_discrepancy = warehouse_transfers.resolve_discrepancy
+list_stock_variances = warehouse_transfers.list_stock_variances
 
 # Inventory
 list_inventory_sessions = warehouse_inventory.list_sessions

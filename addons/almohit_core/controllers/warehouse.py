@@ -173,6 +173,21 @@ class AlmohitWarehouseController(http.Controller):
             payload = {}
         return warehouse_service.resolve_discrepancy(partner, discrepancy_id, payload)
 
+    @http.route(
+        "/almohit/api/warehouse/stock-variances",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def stock_variances(self, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        return warehouse_service.list_stock_variances(
+            partner, kwargs
+        )
+
     # --- Inventory ---
     @http.route("/almohit/api/warehouse/inventory", type="http", auth="user", methods=["GET"], csrf=False)
     def list_inventory(self, **kwargs):
