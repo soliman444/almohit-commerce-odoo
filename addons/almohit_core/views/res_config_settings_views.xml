@@ -18,6 +18,14 @@
                             <field name="almohit_receipt_validation_mode"/>
                         </setting>
                     </block>
+                    <block title="Storefront Sales Warehouse" name="almohit_storefront_warehouse_block">
+                        <setting
+                            id="almohit_storefront_warehouse_setting"
+                            string="Storefront Sales Warehouse"
+                            help="Warehouse used for storefront stock, carts and sales.">
+                            <field name="almohit_storefront_warehouse_id"/>
+                        </setting>
+                    </block>
                 </app>
                 <app
                     string="Almohit WhatsApp"

@@ -28,6 +28,12 @@ class ResConfigSettings(models.TransientModel):
         default="both",
         config_parameter=ICP_RECEIPT_MODE,
     )
+    almohit_storefront_warehouse_id = fields.Many2one(
+        "stock.warehouse",
+        string="Almohit Storefront Sales Warehouse",
+        domain="[('company_id', '=', company_id)]",
+        help="Warehouse used for storefront stock, carts and sales.",
+    )
     almohit_whatsapp_enabled = fields.Boolean(
         string="Enable WhatsApp Notifications",
         help="When disabled, business operations still succeed and WhatsApp is skipped.",
@@ -54,6 +60,15 @@ class ResConfigSettings(models.TransientModel):
             almohit_whatsapp_service_url=cfg["url"],
             almohit_whatsapp_service_token=cfg["token"],
         )
+        warehouse = self.env["stock.warehouse"].sudo().search([
+            ("id", "=", int(
+                self.env["ir.config_parameter"].sudo().get_param(
+                    "almohit.storefront_warehouse_id", "0"
+                ) or "0"
+            )),
+            ("company_id", "=", self.env.company.id),
+        ], limit=1)
+        res["almohit_storefront_warehouse_id"] = warehouse.id or False
         return res
 
     def set_values(self):
@@ -66,6 +81,10 @@ class ResConfigSettings(models.TransientModel):
             (self.almohit_whatsapp_service_url or "").strip().rstrip("/"),
         )
         icp.set_param(ICP_SERVICE_TOKEN, (self.almohit_whatsapp_service_token or "").strip())
+        icp.set_param(
+            "almohit.storefront_warehouse_id",
+            self.almohit_storefront_warehouse_id.id or "",
+        )
 
     def action_open_whatsapp_account(self):
         return {

@@ -30,10 +30,30 @@ def is_inventory_managed(product):
 
 
 def company_warehouse(env):
-    return env["stock.warehouse"].sudo().search(
-        [("company_id", "=", env.company.id)],
-        limit=1,
+    Warehouse = env["stock.warehouse"].sudo()
+    configured_id = env["ir.config_parameter"].sudo().get_param(
+        "almohit.storefront_warehouse_id"
     )
+    if configured_id:
+        try:
+            warehouse_id = int(configured_id)
+        except (TypeError, ValueError):
+            warehouse_id = 0
+        warehouse = Warehouse.search([
+            ("id", "=", warehouse_id),
+            ("company_id", "=", env.company.id),
+        ], limit=1)
+        if warehouse:
+            return warehouse
+        # Fail closed if an explicitly configured warehouse is invalid.
+        from odoo.exceptions import UserError
+        raise UserError(
+            "Almohit storefront sales warehouse is invalid."
+        )
+    # Backward-compatible behavior until a warehouse is configured.
+    return Warehouse.search([
+        ("company_id", "=", env.company.id),
+    ], limit=1)
 
 
 def _product_for_qty(product, warehouse=None):

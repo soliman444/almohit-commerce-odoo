@@ -9,7 +9,7 @@ from .cart import min_order_qty, quantity_below_moq, serialize_cart
 from .customer import commercial_partner, serialize_payment_term
 from .invoices import customer_invoice_ids, serialize_invoice_summary
 from .payments import serialize_order_payment
-from .stock import insufficient_stock_error, serialize_delivery
+from .stock import company_warehouse, insufficient_stock_error, serialize_delivery
 
 CUSTOMER_ORDER_STATES = ("sale", "done", "sent")
 
@@ -284,6 +284,25 @@ def checkout_cart(partner, payload):
             400,
             None,
         )
+
+    try:
+        warehouse = company_warehouse(env)
+    except UserError:
+        return None, (
+            "CHECKOUT_FAILED",
+            "The order could not be confirmed.",
+            400,
+            None,
+        )
+    if not warehouse:
+        return None, (
+            "CHECKOUT_FAILED",
+            "The order could not be confirmed.",
+            400,
+            None,
+        )
+    if cart.warehouse_id != warehouse:
+        cart.warehouse_id = warehouse.id
 
     try:
         cart.action_confirm()

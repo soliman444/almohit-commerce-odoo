@@ -38,16 +38,22 @@ class SaleOrder(models.Model):
 
     @api.model
     def _almohit_get_or_create_cart(self, partner):
+        from ..services.stock import company_warehouse
+
         cart = self._almohit_find_cart(partner)
         pricelist = partner.property_product_pricelist
+        warehouse = company_warehouse(self.env)
         if cart:
             if pricelist and cart.pricelist_id != pricelist:
                 cart.pricelist_id = pricelist.id
+            if warehouse and cart.warehouse_id != warehouse:
+                cart.warehouse_id = warehouse.id
             return cart
         values = {
             "partner_id": partner.id,
             "almohit_storefront_order": True,
             "company_id": self.env.company.id,
+            "warehouse_id": warehouse.id,
         }
         if pricelist:
             values["pricelist_id"] = pricelist.id

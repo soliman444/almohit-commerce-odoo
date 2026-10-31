@@ -171,6 +171,10 @@ def require_warehouse_manager_partner():
 
 
 def get_warehouse_assignment(partner):
+    # Hosted DBs that have warehouse_manager auth code but have not yet
+    # upgraded almohit_core (model not in registry) must not 500 on login.
+    if "almohit.warehouse.assignment" not in partner.env:
+        return None
     Assignment = partner.env["almohit.warehouse.assignment"].sudo()
     return Assignment.search(
         [
@@ -182,13 +186,17 @@ def get_warehouse_assignment(partner):
 
 
 def serialize_warehouse_access(partner):
-    assignment = get_warehouse_assignment(partner)
+    empty = {
+        "warehouses": [],
+        "default_warehouse_id": None,
+        "permissions": [],
+    }
+    try:
+        assignment = get_warehouse_assignment(partner)
+    except KeyError:
+        return empty
     if not assignment:
-        return {
-            "warehouses": [],
-            "default_warehouse_id": None,
-            "permissions": [],
-        }
+        return empty
     warehouses = [
         {"id": warehouse.id, "name": warehouse.name}
         for warehouse in assignment.warehouse_ids.sorted(key=lambda row: (row.name or "", row.id))
@@ -247,10 +255,18 @@ def serialize_auth_user(user, partner=None):
         "role": partner_app_role(partner),
         "payment_term": partner_payment_term(partner.sudo()),
         "price_group": serialize_price_group(partner),
-        "latitude": partner.partner_latitude or None,
-        "longitude": partner.partner_longitude or None,
+        "latitude": getattr(partner, "partner_latitude", None) or None,
+        "longitude": getattr(partner, "partner_longitude", None) or None,
         "is_staff": not bool(user.share),
     }
     if partner_app_role(partner) == "warehouse_manager":
-        payload["warehouse_access"] = serialize_warehouse_access(partner.sudo())
+        # Missing model / partial upgrade must not turn login into HTML 500.
+        try:
+            payload["warehouse_access"] = serialize_warehouse_access(partner.sudo())
+        except KeyError:
+            payload["warehouse_access"] = {
+                "warehouses": [],
+                "default_warehouse_id": None,
+                "permissions": [],
+            }
     return payload

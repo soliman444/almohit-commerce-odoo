@@ -13,7 +13,7 @@ from ..services.cart import (
     serialize_cart,
     serialize_empty_cart,
 )
-from ..services.stock import company_warehouse, over_stock_error
+from ..services.stock import over_stock_error
 
 
 class AlmohitCartController(http.Controller):
@@ -112,7 +112,7 @@ class AlmohitCartController(http.Controller):
                 400,
                 extra={"min_order_qty": moq},
             )
-        stock_err = over_stock_error(product, new_qty, company_warehouse(request.env))
+        stock_err = over_stock_error(product, new_qty, cart.warehouse_id)
         if stock_err:
             code, message, status, extra = stock_err
             return error(code, message, status, extra)
@@ -187,7 +187,7 @@ class AlmohitCartController(http.Controller):
                 400,
                 extra={"min_order_qty": moq},
             )
-        stock_err = over_stock_error(line.product_id, quantity, company_warehouse(request.env))
+        stock_err = over_stock_error(line.product_id, quantity, line.order_id.warehouse_id)
         if stock_err:
             code, message, status, extra = stock_err
             return error(code, message, status, extra)
