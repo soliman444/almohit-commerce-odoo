@@ -16,13 +16,18 @@ def named(record):
 
 
 def receipt_validation_mode(env):
+    """Who may validate purchase incoming receipts.
+
+    Default is warehouse_only: Buyer creates/confirms POs; Warehouse Manager
+    alone posts stock. Legacy values both|buyer_only remain readable for ICP.
+    """
     raw = (
         env["ir.config_parameter"]
         .sudo()
-        .get_param(ICP_RECEIPT_MODE, "both")
-        or "both"
+        .get_param(ICP_RECEIPT_MODE, "warehouse_only")
+        or "warehouse_only"
     ).strip().lower()
-    return raw if raw in RECEIPT_MODES else "both"
+    return raw if raw in RECEIPT_MODES else "warehouse_only"
 
 
 def assignment_or_error(partner):
@@ -85,19 +90,89 @@ def location_in_warehouses(location, warehouses):
     return location.id in allowed_location_ids(warehouses)
 
 
+def _location_subtree_ids(env, root):
+    """Child locations of root, including archived Output/Input/Pack."""
+    if not root:
+        return []
+    Location = env["stock.location"].with_context(active_test=False).sudo()
+    return Location.search([("id", "child_of", root.id)]).ids
+
+
 def warehouse_for_location(location, warehouses):
+    """Resolve warehouse from Odoo location tree (includes archived WH locations)."""
     if not location:
         return warehouses.env["stock.warehouse"]
-    Location = location.env["stock.location"].sudo()
     for warehouse in warehouses:
-        children = Location.search([("id", "child_of", warehouse.view_location_id.id)]).ids
-        if location.id in children:
+        if not warehouse.view_location_id:
+            continue
+        if location.id in _location_subtree_ids(location.env, warehouse.view_location_id):
             return warehouse
     return warehouses.env["stock.warehouse"]
 
 
+def stock_role_for_location(location, warehouse):
+    """Classify a quant location from warehouse routing settings (not fixed names).
+
+    Roles for warehouse stock API consumers:
+    - storage: lot_stock subtree (sellable / dispatchable source)
+    - dispatch_staging: Output subtree (stock→output staging; not free to re-dispatch)
+    - pack: Pack zone subtree
+    - input: Input subtree
+    - other: remaining internal warehouse locations
+    """
+    if not location or not warehouse:
+        return "other"
+    env = location.env
+    if location.id in _location_subtree_ids(env, warehouse.lot_stock_id):
+        return "storage"
+    output = getattr(warehouse, "wh_output_stock_loc_id", False)
+    if output and location.id in _location_subtree_ids(env, output):
+        return "dispatch_staging"
+    packing = getattr(warehouse, "wh_pack_stock_loc_id", False)
+    if packing and location.id in _location_subtree_ids(env, packing):
+        return "pack"
+    incoming = getattr(warehouse, "wh_input_stock_loc_id", False)
+    if incoming and location.id in _location_subtree_ids(env, incoming):
+        return "input"
+    return "other"
+
+
+def warehouse_location_map(warehouses):
+    """location_id → warehouse, including archived children under view_location."""
+    mapping = {}
+    for warehouse in warehouses:
+        if not warehouse.view_location_id:
+            continue
+        for location_id in _location_subtree_ids(warehouse.env, warehouse.view_location_id):
+            mapping[location_id] = warehouse
+    return mapping
+
+
+def dispatchable_qty(product, warehouse):
+    """Qty eligible for warehouse dispatch (stock→output source).
+
+    Uses the same native scope as issue dispatch validation:
+    stock.quant._get_available_quantity(product, warehouse.lot_stock_id, strict=False).
+
+    Includes child shelves under lot_stock. Excludes sibling Output/Input/Pack
+    under the warehouse view (even when archived). Does not use product.free_qty
+    with warehouse context (that sums the whole view_location tree).
+    """
+    if not product or not warehouse or not warehouse.lot_stock_id:
+        return 0.0
+    Quant = product.env["stock.quant"].sudo()
+    if not hasattr(Quant, "_get_available_quantity"):
+        return 0.0
+    qty = Quant._get_available_quantity(
+        product,
+        warehouse.lot_stock_id,
+        strict=False,
+    )
+    return float(qty or 0.0)
+
+
 def internal_locations(warehouses):
-    Location = warehouses.env["stock.location"].sudo()
+    Location = warehouses.env["stock.location"].with_context(active_test=False).sudo()
     return Location.search([
         ("id", "child_of", warehouses.mapped("view_location_id").ids),
         ("usage", "=", "internal"),
@@ -178,11 +253,44 @@ def set_move_done_qty(move, qty):
 
 
 def move_done_qty(move):
+    """Raw Odoo move quantity field (may be prefilled before validate on v17)."""
     if "quantity" in move._fields:
         return float(move.quantity or 0.0)
     if "quantity_done" in move._fields:
         return float(move.quantity_done or 0.0)
     return float(sum(move.move_line_ids.mapped("qty_done") or [0.0]))
+
+
+def move_prepared_qty(move):
+    """Qty entered on the move UI / lines before stock is posted."""
+    if move.state in ("done", "cancel"):
+        return 0.0
+    return move_done_qty(move)
+
+
+def move_posted_qty(move):
+    """Qty actually posted to stock (validate completed).
+
+    Odoo 17 often prefills ``stock.move.quantity`` on open incoming/outgoing
+    moves; that must not be reported as received/done until ``state == done``.
+    Partial receipts that created a backorder leave the validated move in
+    ``done`` with its own ``product_uom_qty`` / posted quantity.
+    """
+    if move.state != "done":
+        return 0.0
+    posted = move_done_qty(move)
+    ordered = float(move.product_uom_qty or 0.0)
+    if posted <= 0:
+        return ordered
+    return posted
+
+
+def move_reserved_qty(move):
+    if move.state in ("done", "cancel"):
+        return 0.0
+    if "reserved_availability" in move._fields:
+        return float(move.reserved_availability or 0.0)
+    return float(sum(move.move_line_ids.mapped("reserved_uom_qty") or [0.0])) if "reserved_uom_qty" in move.move_line_ids._fields else 0.0
 
 
 def sudo_picking(picking):
@@ -195,109 +303,3 @@ def ensure_confirmed_assigned(picking):
     if picking.state in ("confirmed", "waiting", "assigned") and hasattr(picking, "action_assign"):
         picking.action_assign()
 
-
-def apply_move_destinations(move, destinations, allowed_locations):
-    """Apply one or more destination locations for a receive move.
-
-    destinations: list of (location_record, qty)
-    `_split(qty)` creates a NEW move with `qty` and reduces the original.
-    """
-    if not destinations:
-        return error("INVALID_FIELDS", "destinations are required.", 400)
-    for location, qty in destinations:
-        if qty < 0:
-            return error("INVALID_QUANTITY", "Quantity must be >= 0.", 400)
-        if location.id not in allowed_locations:
-            return error(
-                "WAREHOUSE_NOT_ALLOWED",
-                "Location is outside assigned warehouses.",
-                403,
-            )
-        if location.usage != "internal":
-            return error(
-                "INVALID_LOCATION",
-                "Destination must be an internal stock location.",
-                400,
-            )
-
-    # Odoo 17 stock.move._split returns copy_data vals (list[dict]), not an id.
-    original = move
-    targets = []
-    for location, qty in destinations[:-1]:
-        if qty <= 0:
-            continue
-        try:
-            new_move_vals = original._split(qty)
-        except (UserError, ValidationError) as exc:
-            return native_error("MOVE_SPLIT_FAILED", exc)
-        if not new_move_vals:
-            continue
-        try:
-            target = original.env["stock.move"].sudo().create(new_move_vals)
-        except (UserError, ValidationError) as exc:
-            return native_error("MOVE_SPLIT_FAILED", exc)
-        if not target:
-            return error("MOVE_SPLIT_FAILED", "Could not split stock move.", 400)
-        # Keep split moves on the same picking / confirm for qty edits.
-        if target.state == "draft":
-            target._action_confirm(merge=False)
-        targets.append((target, location, qty))
-    last_location, last_qty = destinations[-1]
-    targets.append((original, last_location, last_qty))
-
-    for target, location, qty in targets:
-        target.write({"location_dest_id": location.id})
-        for line in target.move_line_ids.filtered(
-            lambda row: row.state not in ("done", "cancel")
-        ):
-            line.write({"location_dest_id": location.id})
-        try:
-            set_move_done_qty(target, qty)
-        except (UserError, ValidationError) as exc:
-            return native_error("INVALID_QUANTITY", exc)
-    return None
-
-
-def parse_receive_line_destinations(env, line, move, allowed_locations):
-    """Normalize receive line into destinations list."""
-    destinations_raw = line.get("destinations")
-    if destinations_raw is not None:
-        if not isinstance(destinations_raw, list) or not destinations_raw:
-            return None, error(
-                "INVALID_FIELDS",
-                "destinations must be a non-empty array.",
-                400,
-            )
-        destinations = []
-        for row in destinations_raw:
-            if not isinstance(row, dict):
-                return None, error("INVALID_FIELDS", "Each destination must be an object.", 400)
-            location_id = strict_int(row.get("location_id"))
-            qty = strict_float(row.get("quantity"))
-            if not location_id or qty is None:
-                return None, error(
-                    "INVALID_FIELDS",
-                    "Each destination needs location_id and quantity.",
-                    400,
-                )
-            location = env["stock.location"].sudo().browse(location_id).exists()
-            if not location:
-                return None, error("LOCATION_NOT_FOUND", "Location not found.", 404)
-            destinations.append((location, qty))
-        return destinations, None
-
-    qty = strict_float(line.get("quantity_done"))
-    if qty is None:
-        return None, error(
-            "INVALID_RECEIPT_QUANTITY",
-            "quantity_done must be a number >= 0.",
-            400,
-        )
-    location_id = strict_int(line.get("location_dest_id"))
-    if location_id:
-        location = env["stock.location"].sudo().browse(location_id).exists()
-        if not location:
-            return None, error("LOCATION_NOT_FOUND", "Location not found.", 404)
-    else:
-        location = move.location_dest_id
-    return [(location, qty)], None

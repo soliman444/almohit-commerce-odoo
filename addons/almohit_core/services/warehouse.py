@@ -6,6 +6,7 @@ from . import warehouse_receipts
 from . import warehouse_issues
 from . import warehouse_transfers
 from . import warehouse_inventory
+from . import warehouse_packing
 
 
 def list_my_warehouses(partner):
@@ -59,7 +60,10 @@ def list_stock(partner, kwargs):
 
 def _list_stock_impl(partner, kwargs, assignment):
     from .api import error, parse_pagination, success as ok
-    from .warehouse_common import strict_int, warehouse_for_location
+    from .warehouse_common import (
+        stock_role_for_location,
+        warehouse_location_map,
+    )
 
     page, page_size, page_err = parse_pagination(kwargs)
     if page_err:
@@ -94,13 +98,7 @@ def _list_stock_impl(partner, kwargs, assignment):
     offset = (page - 1) * page_size
     quants = Quant.search(domain, offset=offset, limit=page_size, order="product_id, location_id, id")
     pages = 0 if total == 0 else (total + page_size - 1) // page_size
-    warehouse_by_location = {}
-    for warehouse in warehouses:
-        child_ids = partner.env["stock.location"].sudo().search(
-            [("id", "child_of", warehouse.view_location_id.id)]
-        ).ids
-        for location_id in child_ids:
-            warehouse_by_location[location_id] = warehouse
+    warehouse_by_location = warehouse_location_map(warehouses)
     items = []
     for quant in quants:
         warehouse = warehouse_by_location.get(quant.location_id.id)
@@ -124,6 +122,8 @@ def _list_stock_impl(partner, kwargs, assignment):
                 "id": quant.location_id.id,
                 "name": quant.location_id.complete_name or quant.location_id.name,
             },
+            # storage = lot_stock tree; dispatch_staging = Output (not free to re-dispatch).
+            "stock_role": stock_role_for_location(quant.location_id, warehouse),
             "quantity": float(quant.quantity or 0.0),
             "reserved_quantity": float(quant.reserved_quantity or 0.0),
             "available_quantity": float(
@@ -152,6 +152,7 @@ receive_receipt = warehouse_receipts.receive_receipt
 list_issues = warehouse_issues.list_issues
 get_issue = warehouse_issues.get_issue
 dispatch_issue = warehouse_issues.dispatch_issue
+list_distributors = warehouse_issues.list_distributors
 
 # Transfers
 list_transfers = warehouse_transfers.list_transfers
@@ -170,6 +171,17 @@ list_inventory_sessions = warehouse_inventory.list_sessions
 get_inventory_session = warehouse_inventory.get_session
 preview_inventory_import = warehouse_inventory.preview_import
 approve_inventory_session = warehouse_inventory.approve_session
+
+# Packing / manufacturing (phase 1: read-only)
+list_packing_boms = warehouse_packing.list_boms
+list_packing_orders = warehouse_packing.list_orders
+get_packing_order = warehouse_packing.get_order
+get_packing_bom = warehouse_packing.get_bom
+create_packing_bom = warehouse_packing.create_bom
+update_packing_bom = warehouse_packing.update_bom
+create_packing_order = warehouse_packing.create_order
+confirm_packing_order = warehouse_packing.confirm_order
+complete_packing_order = warehouse_packing.complete_order
 
 
 def list_movements(partner, kwargs):

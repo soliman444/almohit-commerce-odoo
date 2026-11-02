@@ -42,6 +42,8 @@
                         <group>
                             <field name="perm_transfer_create"/>
                             <field name="perm_transfer_receive"/>
+                            <field name="perm_packing"/>
+                            <field name="perm_packing_bom_manage"/>
                         </group>
                     </group>
                     <group>

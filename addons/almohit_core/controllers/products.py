@@ -6,7 +6,6 @@ from odoo.http import request
 from ..services.api import success, error
 from ..services.catalog import (
     SALEABLE_DOMAIN,
-    company_warehouse,
     may_see_price,
     pricelist_prices,
     saleable_template,
@@ -16,8 +15,8 @@ from ..services.catalog import (
     serialize_brand,
     serialize_category,
     serialize_template,
-    template_in_stock,
 )
+from ..services.stock import template_in_stock
 from ..services.storefront_currency import (
     StorefrontCurrencyError,
     requested_currency,
@@ -343,9 +342,8 @@ class AlmohitProductsController(http.Controller):
         if price_sort or max_price is not None:
             templates = templates_model.search(domain, order=order)
             if in_stock is not None:
-                warehouse = company_warehouse(request.env)
                 templates = templates.filtered(
-                    lambda tmpl: template_in_stock(tmpl, warehouse) == in_stock
+                    lambda tmpl: template_in_stock(tmpl, aggregated=True) == in_stock
                 )
             priced = _template_sort_prices(user, templates, pricing_pricelist)
             if max_price is not None:
@@ -380,10 +378,9 @@ class AlmohitProductsController(http.Controller):
                 order=order,
             )
         else:
-            warehouse = company_warehouse(request.env)
             templates = templates_model.search(domain, order=order)
             templates = templates.filtered(
-                lambda tmpl: template_in_stock(tmpl, warehouse) == in_stock
+                lambda tmpl: template_in_stock(tmpl, aggregated=True) == in_stock
             )
             total = len(templates)
             offset = (page - 1) * page_size

@@ -28,6 +28,17 @@ class StockPicking(models.Model):
         string="Warehouse Dispatch Picking",
         copy=False,
         readonly=True,
+        help="Primary (first) stock→output dispatch picking. Kept for compatibility.",
+    )
+    almohit_dispatch_picking_ids = fields.Many2many(
+        "stock.picking",
+        "almohit_stock_picking_dispatch_rel",
+        "delivery_picking_id",
+        "dispatch_picking_id",
+        string="Warehouse Dispatch Pickings",
+        copy=False,
+        readonly=True,
+        help="All stock→output internal pickings created for this customer delivery.",
     )
     almohit_storefront_delivery = fields.Boolean(
         string="Almohit Storefront Delivery",

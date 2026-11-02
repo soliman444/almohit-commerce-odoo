@@ -6,7 +6,6 @@ from odoo.tools import html2plaintext
 from .stock import (
     availability_payload,
     available_qty,
-    company_warehouse,
     product_in_stock,
     template_in_stock,
 )
@@ -105,8 +104,8 @@ def _serialize_variant(variant, include_price=False, variant_prices=None, wareho
         "attributes": _variant_attributes(variant),
         "image_url": image_url(variant, "image_variant_256"),
         "availability": availability_payload(
-            product_in_stock(variant, warehouse),
-            available_qty(variant, warehouse) if include_price else None,
+            product_in_stock(variant, aggregated=True),
+            available_qty(variant, aggregated=True) if include_price else None,
         ),
     }
     if include_price and variant_prices is not None and variant.id in variant_prices:
@@ -164,7 +163,6 @@ def serialize_template(
     currency_name=None,
 ):
     variants = tmpl.product_variant_ids.filtered("active")
-    warehouse = company_warehouse(tmpl.env)
     category = None
     if tmpl.categ_id:
         try:
@@ -196,9 +194,9 @@ def serialize_template(
         "image_url": image_url(tmpl, "image_256"),
         "min_order_qty": float(tmpl.almohit_min_order_qty or 0.0),
         "availability": availability_payload(
-            template_in_stock(tmpl, warehouse),
+            template_in_stock(tmpl, aggregated=True),
             (
-                available_qty(variants[:1], warehouse)
+                available_qty(variants[:1], aggregated=True)
                 if include_price and len(variants) == 1
                 else None
             ),
@@ -215,7 +213,6 @@ def serialize_template(
                 variant,
                 include_price=include_price,
                 variant_prices=variant_prices,
-                warehouse=warehouse,
             )
             for variant in variants
         ],

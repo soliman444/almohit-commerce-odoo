@@ -3,7 +3,6 @@ import base64
 
 from datetime import datetime, time
 from odoo import http
-from odoo import SUPERUSER_ID
 from odoo.exceptions import UserError, ValidationError
 from .images import PRODUCT_IMAGE_MAX_BYTES, _decode_image
 from .api import (
@@ -77,8 +76,6 @@ PURCHASE_LINE_PATCH_FIELDS = {
     "planned_date",
     "remove",
 }
-RECEIVE_FIELDS = {"lines"}
-RECEIVE_LINE_FIELDS = {"move_id", "quantity_done"}
 PURCHASE_EDITABLE_STATES = {"draft", "sent", "to approve"}
 PURCHASE_STATES = {"draft", "sent", "to approve", "purchase", "done", "cancel"}
 PICKING_STATES = {"draft", "waiting", "confirmed", "assigned", "done", "cancel"}
@@ -437,40 +434,6 @@ def serialize_buyer_product(product):
     }
 
 
-def _move_done_qty(move):
-    if "quantity" in move._fields:
-        return float(move.quantity or 0.0)
-    if "quantity_done" in move._fields:
-        return float(move.quantity_done or 0.0)
-    return float(sum(move.move_line_ids.mapped("qty_done") or [0.0]))
-
-
-def _set_move_done_qty(move, qty):
-    if "quantity" in move._fields:
-        move.quantity = qty
-        return
-    if "quantity_done" in move._fields:
-        move.quantity_done = qty
-        return
-    lines = move.move_line_ids
-    if not lines:
-        move._action_assign()
-        lines = move.move_line_ids
-    if not lines:
-        move.move_line_ids = [(0, 0, {
-            "product_id": move.product_id.id,
-            "product_uom_id": move.product_uom.id,
-            "qty_done": qty,
-            "location_id": move.location_id.id,
-            "location_dest_id": move.location_dest_id.id,
-            "picking_id": move.picking_id.id,
-        })]
-        return
-    lines[0].qty_done = qty
-    for extra in lines[1:]:
-        extra.qty_done = 0.0
-
-
 def serialize_purchase_line(line):
     received = float(line.qty_received or 0.0) if "qty_received" in line._fields else 0.0
     ordered = float(line.product_qty or 0.0)
@@ -492,10 +455,12 @@ def serialize_purchase_line(line):
 
 
 def serialize_receipt_line(move):
+    from .warehouse_common import move_posted_qty, move_prepared_qty, move_reserved_qty
+
     ordered = float(move.product_uom_qty or 0.0)
-    received = _move_done_qty(move)
-    if move.state == "done":
-        received = ordered if received <= 0 else received
+    received = move_posted_qty(move)
+    prepared = move_prepared_qty(move)
+    reserved = move_reserved_qty(move)
     return {
         "move_id": move.id,
         "source_location": _named(move.location_id),
@@ -506,6 +471,8 @@ def serialize_receipt_line(move):
             "default_code": move.product_id.default_code or None,
         },
         "ordered_qty": ordered,
+        "prepared_qty": prepared,
+        "reserved_qty": reserved,
         "received_qty": received,
         "remaining_qty": max(ordered - received, 0.0),
         "uom": _named(move.product_uom),
@@ -1440,173 +1407,17 @@ def get_receipt(user, picking_id):
     return success(serialize_receipt(picking, detail=True))
 
 
-def _finish_validate(picking, result):
-    for _ in range(6):
-        if not isinstance(result, dict):
-            return None
-        model = result.get("res_model")
-        if not model:
-            return None
-        ctx = result.get("context") or {}
-        Wizard = picking.env[model].with_context(ctx)
-        if result.get("res_id"):
-            wizard = Wizard.browse(result["res_id"])
-        else:
-            wizard = Wizard.create({})
-        if hasattr(wizard, "process"):
-            result = wizard.process()
-        elif hasattr(wizard, "process_cancel_backorder"):
-            result = wizard.process()
-        elif hasattr(wizard, "action_confirm"):
-            result = wizard.action_confirm()
-        else:
-            return None
-    return None
+def receive_receipt(user, picking_id, payload=None):
+    """Disabled stock path — Warehouse Manager alone posts purchase receipts.
 
-
-
-def _raw_materials_location(env):
-    """Return the raw materials stock location."""
-    location = env["stock.location"].sudo().browse(17).exists()
-
-    if (
-        not location
-        or location.usage != "internal"
-        or (
-            location.company_id
-            and location.company_id != env.company
-        )
-    ):
-        return False
-
-    return location
-
-
-def _is_raw_material_product(product):
-    """Recognize products in the raw-materials category."""
-    return product.categ_id.complete_name == "المواد الخام - سلال"
-
-
-def _route_raw_material_receipt(picking):
-    """Route raw-material moves to their storage location."""
-    location = _raw_materials_location(picking.env)
-
-    raw_moves = picking.move_ids.filtered(
-        lambda move: (
-            move.state not in ("done", "cancel")
-            and _is_raw_material_product(move.product_id)
-        )
-    )
-
-    if not raw_moves:
-        return None
-
-    if not location:
-        return error(
-            "RAW_MATERIALS_LOCATION_NOT_CONFIGURED",
-            "Raw materials location is not configured.",
-            400,
-        )
-
-    for move in raw_moves:
-        if move.location_dest_id != location:
-            move.write({
-                "location_dest_id": location.id,
-            })
-
-        move_lines = move.move_line_ids.filtered(
-            lambda line: line.state not in ("done", "cancel")
-        )
-
-        for move_line in move_lines:
-            if move_line.location_dest_id != location:
-                move_line.write({
-                    "location_dest_id": location.id,
-                })
-
-    return None
-
-def receive_receipt(user, picking_id, payload):
-    from .warehouse_common import receipt_validation_mode
-
-    # Compatibility policy with warehouse manager receipts:
-    # both (default) | warehouse_only | buyer_only
-    mode = receipt_validation_mode(user.env)
-    if mode == "warehouse_only":
-        return error(
-            "RECEIPT_HANDED_TO_WAREHOUSE",
-            "Purchase receipt validation is handled by warehouse managers. "
-            "Set almohit.receipt_validation_mode to both or buyer_only to restore buyer receive.",
-            403,
-        )
-
-    err = _reject_unknown(payload, RECEIVE_FIELDS)
-    if err:
-        return err
+    Kept as a compatibility endpoint: always 403, never mutates stock/picking.
+    Ownership is still checked so foreign IDs remain opaque (404).
+    """
     picking = _owned_receipt(user, picking_id)
     if not picking:
         return error("RECEIPT_NOT_FOUND", "Receipt not found.", 404)
-    if picking.state in ("done", "cancel"):
-        return error(
-            "RECEIPT_NOT_READY",
-            "This receipt cannot be processed.",
-            400,
-        )
-    
-    # The receipt was already verified as belonging to this Buyer.
-    # Execute native stock operations with Odoo's internal superuser.
-    picking = picking.with_user(SUPERUSER_ID)
-    lines = payload.get("lines")
-    if not isinstance(lines, list) or not lines:
-        return error("INVALID_FIELDS", "lines must be a non-empty array.", 400)
-    try:
-        if picking.state == "draft" and hasattr(picking, "action_confirm"):
-            picking.action_confirm()
-        if picking.state in ("confirmed", "waiting", "assigned") and hasattr(picking, "action_assign"):
-            picking.action_assign()
-    except (UserError, ValidationError) as exc:
-        return _native_error("RECEIPT_NOT_READY", exc)
-    
-    routing_error = _route_raw_material_receipt(picking)
-    if routing_error:
-        return routing_error
-    
-    moves = {move.id: move for move in picking.move_ids}
-    for line in lines:
-        if not isinstance(line, dict):
-            return error("INVALID_FIELDS", "Each receipt line must be an object.", 400)
-        err = _reject_unknown(line, RECEIVE_LINE_FIELDS)
-        if err:
-            return err
-        move_id = _strict_int(line.get("move_id"))
-        move = moves.get(move_id)
-        if not move:
-            return error("RECEIPT_NOT_FOUND", "Receipt line not found.", 404)
-        qty = _strict_float(line.get("quantity_done"))
-        if qty is None or qty < 0:
-            return error(
-                "INVALID_RECEIPT_QUANTITY",
-                "quantity_done must be a number greater than or equal to 0.",
-                400,
-            )
-        try:
-            _set_move_done_qty(move, qty)
-        except (UserError, ValidationError) as exc:
-            return _native_error("INVALID_RECEIPT_QUANTITY", exc)
-    
-    routing_error = _route_raw_material_receipt(picking)
-    if routing_error:
-        return routing_error
-
-    try:
-        result = picking.button_validate()
-        _finish_validate(picking, result)
-    except (UserError, ValidationError) as exc:
-        return _native_error("INVALID_RECEIPT_QUANTITY", exc)
-    picking.invalidate_recordset()
-    data = serialize_receipt(picking, detail=True)
-    backorders = []
-    if "backorder_ids" in picking._fields:
-        backorders = [_named(row) for row in picking.backorder_ids]
-    data["backorders"] = backorders
-    return success(data)
+    return error(
+        "RECEIPT_HANDED_TO_WAREHOUSE",
+        "Purchase receipt validation is handled by warehouse managers.",
+        403,
+    )

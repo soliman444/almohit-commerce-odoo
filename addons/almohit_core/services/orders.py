@@ -161,7 +161,7 @@ def _validate_line_products(cart):
         stock_error = insufficient_stock_error(
             line,
             product,
-            warehouse=cart.warehouse_id,
+            aggregated=True,
         )
         if stock_error:
             return stock_error
@@ -299,8 +299,10 @@ def checkout_cart(partner, payload):
     cart._recompute_prices()
     cart.invalidate_recordset()
 
+    # Odoo needs an initial warehouse to create delivery moves. Keep a valid
+    # cart warehouse when present; otherwise set the configured/default source.
     try:
-        warehouse = company_warehouse(env)
+        default_warehouse = company_warehouse(env)
     except UserError:
         return None, (
             "CHECKOUT_FAILED",
@@ -308,15 +310,22 @@ def checkout_cart(partner, payload):
             400,
             None,
         )
-    if not warehouse:
-        return None, (
-            "CHECKOUT_FAILED",
-            "The order could not be confirmed.",
-            400,
-            None,
-        )
-    if cart.warehouse_id != warehouse:
-        cart.warehouse_id = warehouse.id
+    cart_warehouse = cart.warehouse_id
+    if (
+        cart_warehouse
+        and cart_warehouse.company_id
+        and cart_warehouse.company_id != env.company
+    ):
+        cart_warehouse = cart.env["stock.warehouse"].browse()
+    if not cart_warehouse:
+        if not default_warehouse:
+            return None, (
+                "CHECKOUT_FAILED",
+                "The order could not be confirmed.",
+                400,
+                None,
+            )
+        cart.warehouse_id = default_warehouse.id
 
     try:
         cart.action_confirm()

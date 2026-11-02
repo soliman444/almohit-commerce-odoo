@@ -119,12 +119,13 @@ def create_own_application(env, partner, payload):
     if blocked:
         return None, blocked
 
-    role = (
-        payload.get("role")
-        or partner.almohit_app_role
-        or "merchant"
-    ).strip().lower()
-
+    account_role = (partner.almohit_app_role or "merchant").strip().lower()
+    requested_role = payload.get("role")
+    if requested_role not in (None, ""):
+        requested_role = str(requested_role).strip().lower()
+        if requested_role != account_role:
+            return None, INVALID_ROLE
+    role = account_role
     if role not in APP_ROLES:
         return None, INVALID_ROLE
 
@@ -243,16 +244,10 @@ def create_own_application(env, partner, payload):
         )
 
     partner_values = {}
-
-    if partner.almohit_app_role != role:
-        partner_values["almohit_app_role"] = role
-
     if latitude is not None:
         partner_values["partner_latitude"] = latitude
-
     if longitude is not None:
         partner_values["partner_longitude"] = longitude
-
     if partner_values:
         partner.write(partner_values)
 

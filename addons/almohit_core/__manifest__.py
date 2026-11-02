@@ -1,6 +1,6 @@
 {
     "name": "Almohit Core",
-    "version": "17.0.1.60.0",
+    "version": "17.0.1.75.0",
     "summary": "Core backend and API for Almohit",
     "category": "Sales",
     "author": "Almohit",
@@ -15,6 +15,7 @@
         "purchase",
         "purchase_stock",
         "stock",
+        "mrp",
         "account",
         "account_payment",
     ],

@@ -56,6 +56,14 @@ def company_warehouse(env):
     ], limit=1)
 
 
+def saleable_warehouses(env):
+    """Active company warehouses used for storefront availability (native Odoo)."""
+    return env["stock.warehouse"].sudo().search([
+        ("company_id", "=", env.company.id),
+        ("active", "=", True),
+    ], order="sequence, id")
+
+
 def _product_for_qty(product, warehouse=None):
     product = product.sudo()
     if warehouse:
@@ -67,19 +75,44 @@ def free_qty(product, warehouse=None):
     return _product_for_qty(product, warehouse).free_qty
 
 
-def product_in_stock(product, warehouse=None):
+def aggregated_free_qty(product):
+    """Sum free_qty across saleable company warehouses without shared-location double count.
+
+    Uses each warehouse's native stock tree (lot_stock / free_qty). Transit and
+    reserved quantities are already excluded by Odoo free_qty.
+    """
+    if not is_inventory_managed(product):
+        return None
+    warehouses = saleable_warehouses(product.env)
+    if not warehouses:
+        return 0.0
+    seen_stock_roots = set()
+    total = 0.0
+    for warehouse in warehouses:
+        root = warehouse.lot_stock_id
+        if not root or root.id in seen_stock_roots:
+            continue
+        seen_stock_roots.add(root.id)
+        total += float(free_qty(product, warehouse) or 0.0)
+    return total
+
+
+def product_in_stock(product, warehouse=None, *, aggregated=False):
     if not is_inventory_managed(product):
         return True
-    qty = free_qty(product, warehouse)
+    qty = aggregated_free_qty(product) if aggregated else free_qty(product, warehouse)
     rounding = product.uom_id.rounding or 0.01
-    return float_compare(qty, 0.0, precision_rounding=rounding) > 0
+    return float_compare(qty or 0.0, 0.0, precision_rounding=rounding) > 0
 
 
-def template_in_stock(template, warehouse=None):
+def template_in_stock(template, warehouse=None, *, aggregated=False):
     variants = template.product_variant_ids.filtered("active")
     if not variants:
-        return product_in_stock(template, warehouse)
-    return any(product_in_stock(variant, warehouse) for variant in variants)
+        return product_in_stock(template, warehouse, aggregated=aggregated)
+    return any(
+        product_in_stock(variant, warehouse, aggregated=aggregated)
+        for variant in variants
+    )
 
 
 def availability_payload(in_stock, qty=None):
@@ -89,14 +122,16 @@ def availability_payload(in_stock, qty=None):
     return payload
 
 
-def available_qty(product, warehouse=None):
+def available_qty(product, warehouse=None, *, aggregated=False):
     if not is_inventory_managed(product):
         return None
+    if aggregated:
+        return float(aggregated_free_qty(product) or 0.0)
     return float(free_qty(product, warehouse) or 0.0)
 
 
-def over_stock_error(product, quantity, warehouse=None):
-    available = available_qty(product, warehouse)
+def over_stock_error(product, quantity, warehouse=None, *, aggregated=False):
+    available = available_qty(product, warehouse, aggregated=aggregated)
     if available is None:
         return None
     rounding = product.uom_id.rounding or 0.01
@@ -128,9 +163,9 @@ def requested_qty_in_product_uom(line, product):
     )
 
 
-def insufficient_stock_error(line, product, warehouse=None):
+def insufficient_stock_error(line, product, warehouse=None, *, aggregated=False):
     needed = requested_qty_in_product_uom(line, product)
-    return over_stock_error(product, needed, warehouse)
+    return over_stock_error(product, needed, warehouse, aggregated=aggregated)
 
 
 def outgoing_pickings(order):

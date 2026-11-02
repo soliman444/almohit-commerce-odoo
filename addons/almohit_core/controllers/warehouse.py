@@ -78,6 +78,13 @@ class AlmohitWarehouseController(http.Controller):
             return err
         return warehouse_service.get_issue(partner, picking_id)
 
+    @http.route("/almohit/api/warehouse/distributors", type="http", auth="user", methods=["GET"], csrf=False)
+    def list_distributors(self, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        return warehouse_service.list_distributors(partner)
+
     @http.route("/almohit/api/warehouse/issues/<int:picking_id>/dispatch", type="http", auth="user", methods=["POST"], csrf=False)
     def dispatch_issue(self, picking_id, **kwargs):
         partner, err = self._partner()
@@ -186,6 +193,141 @@ class AlmohitWarehouseController(http.Controller):
             return err
         return warehouse_service.list_stock_variances(
             partner, kwargs
+        )
+
+    # --- Packing / manufacturing (read + BoM manage + draft MO create) ---
+    @http.route(
+        "/almohit/api/warehouse/packing/boms",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def list_packing_boms(self, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        return warehouse_service.list_packing_boms(partner, kwargs)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/boms",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        csrf=False,
+    )
+    def create_packing_bom(self, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        payload, body_err = read_json_body()
+        if body_err:
+            return body_err
+        return warehouse_service.create_packing_bom(partner, payload)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/boms/<int:bom_id>",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def get_packing_bom(self, bom_id, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        return warehouse_service.get_packing_bom(partner, bom_id)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/boms/<int:bom_id>",
+        type="http",
+        auth="user",
+        methods=["PATCH"],
+        csrf=False,
+    )
+    def update_packing_bom(self, bom_id, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        payload, body_err = read_json_body()
+        if body_err:
+            return body_err
+        return warehouse_service.update_packing_bom(partner, bom_id, payload)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/orders",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def list_packing_orders(self, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        return warehouse_service.list_packing_orders(partner, kwargs)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/orders",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        csrf=False,
+    )
+    def create_packing_order(self, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        payload, body_err = read_json_body()
+        if body_err:
+            return body_err
+        return warehouse_service.create_packing_order(partner, payload)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/orders/<int:production_id>",
+        type="http",
+        auth="user",
+        methods=["GET"],
+        csrf=False,
+    )
+    def get_packing_order(self, production_id, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        return warehouse_service.get_packing_order(partner, production_id)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/orders/<int:production_id>/confirm",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        csrf=False,
+    )
+    def confirm_packing_order(self, production_id, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        payload, body_err = read_json_body()
+        if body_err:
+            return body_err
+        return warehouse_service.confirm_packing_order(partner, production_id, payload)
+
+    @http.route(
+        "/almohit/api/warehouse/packing/orders/<int:production_id>/complete",
+        type="http",
+        auth="user",
+        methods=["POST"],
+        csrf=False,
+    )
+    def complete_packing_order(self, production_id, **kwargs):
+        partner, err = self._partner()
+        if err:
+            return err
+        payload, body_err = read_json_body()
+        if body_err:
+            return body_err
+        return warehouse_service.complete_packing_order(
+            partner, production_id, payload
         )
 
     # --- Inventory ---

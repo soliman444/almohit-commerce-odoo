@@ -1,11 +1,7 @@
-import logging
-
 from odoo import api, fields, models
 
 from ..services.payments import create_storefront_invoice
 from ..services.whatsapp import EVENT_ORDER_CONFIRMED, schedule_notification
-
-_logger = logging.getLogger(__name__)
 
 
 class SaleOrder(models.Model):
@@ -44,8 +40,8 @@ class SaleOrder(models.Model):
         pricelist = partner.property_product_pricelist
         warehouse = company_warehouse(self.env)
         if cart:
-            if warehouse and cart.warehouse_id != warehouse:
-                cart.warehouse_id = warehouse.id
+            # Keep any existing draft warehouse as the initial source;
+            # warehouse managers may change the delivery picking source later.
             return cart
         values = {
             "partner_id": partner.id,
@@ -83,6 +79,8 @@ class SaleOrder(models.Model):
         )
 
         for order in confirmed:
+            # Create + post customer invoice so payment terms / payment_ok apply.
+            create_storefront_invoice(order)
             schedule_notification(EVENT_ORDER_CONFIRMED, order)
 
         return result

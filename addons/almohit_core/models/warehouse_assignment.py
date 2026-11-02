@@ -42,6 +42,17 @@ class AlmohitWarehouseAssignment(models.Model):
     perm_issue = fields.Boolean(string="Issue Goods", default=False)
     perm_transfer_create = fields.Boolean(string="Create Transfers", default=False)
     perm_transfer_receive = fields.Boolean(string="Receive Transfers", default=False)
+    perm_packing = fields.Boolean(
+        string="Packing / Manufacturing",
+        default=False,
+        help="Allow reading BoMs and creating draft manufacturing orders.",
+    )
+    perm_packing_bom_manage = fields.Boolean(
+        string="Manage Packing BoMs",
+        default=False,
+        help="Allow creating and editing manufacturing Bills of Materials. "
+             "Independent from packing read / draft MO creation.",
+    )
     active = fields.Boolean(default=True)
     notes = fields.Text()
 
@@ -96,4 +107,8 @@ class AlmohitWarehouseAssignment(models.Model):
             codes.append("transfer_create")
         if self.perm_transfer_receive:
             codes.append("transfer_receive")
+        if self.perm_packing:
+            codes.append("packing")
+        if self.perm_packing_bom_manage:
+            codes.append("packing_bom_manage")
         return codes

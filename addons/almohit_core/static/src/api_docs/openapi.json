@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Almohit App API",
-    "version": "17.0.1.60.0",
-    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.60.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Merchant (external customer who buys FROM Almohit): cart, checkout, customer orders, invoices, payments, payment transactions, addresses. Buyer (Almohit procurement who buys FROM farmers/suppliers INTO inventory): `/almohit/api/buyer/*` only — suppliers, procurement products, purchase orders, incoming receipts. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). Warehouse Manager: `/almohit/api/warehouse/*` (approved + warehouse assignment + permission flags; see warehouse_api.md). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Buyer is denied customer commerce. Merchant/marketer/distributor are denied buyer procurement. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Buyer procurement.** Native `res.partner` vendors (`supplier_rank > 0`), `product.template`/`product.product`, `purchase.order`, and incoming `stock.picking`. Confirm uses `purchase.order.button_confirm()`. Receive uses `stock.picking.button_validate()` after setting done quantities. Portal Buyer + sudo after `group_almohit_buyer`. Purchases are scoped to `purchase.order.user_id` of the current Buyer.\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand, buyer procurement product, buyer purchase images). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand/buyer product/purchase images: 2 MB. Shop image: 4 MB. Max 2000×2000. Purchase `images` max 12. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
+    "version": "17.0.1.75.0",
+    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.75.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Merchant (external customer who buys FROM Almohit): cart, checkout, customer orders, invoices, payments, payment transactions, addresses. Buyer (Almohit procurement who buys FROM farmers/suppliers INTO inventory): `/almohit/api/buyer/*` only — suppliers, procurement products, purchase orders, incoming receipts. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). Warehouse Manager: `/almohit/api/warehouse/*` (approved + warehouse assignment + permission flags; see warehouse_api.md). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Buyer is denied customer commerce. Merchant/marketer/distributor are denied buyer procurement. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Buyer procurement.** Native `res.partner` vendors (`supplier_rank > 0`), `product.template`/`product.product`, `purchase.order`, and incoming `stock.picking`. Confirm uses `purchase.order.button_confirm()`. Receive uses `stock.picking.button_validate()` after setting done quantities. Portal Buyer + sudo after `group_almohit_buyer`. Purchases are scoped to `purchase.order.user_id` of the current Buyer.\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand, buyer procurement product, buyer purchase images). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand/buyer product/purchase images: 2 MB. Shop image: 4 MB. Max 2000×2000. Purchase `images` max 12. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
   },
   "servers": [
     {
@@ -50,7 +50,7 @@
     },
     {
       "name": "Warehouse",
-      "description": "Warehouse manager stock, receipts, issues, transfers, inventory. Requires role warehouse_manager, approved trade status, and almohit.warehouse.assignment. Receipt mode ICP almohit.receipt_validation_mode: both|warehouse_only|buyer_only."
+      "description": "Warehouse manager stock, receipts, issues, transfers, inventory. Requires role warehouse_manager, approved trade status, and almohit.warehouse.assignment. Purchase receipt posting is warehouse_only by default; Buyer receive is disabled."
     }
   ],
   "components": {
@@ -1906,42 +1906,51 @@
         "required": [
           "lines"
         ],
+        "additionalProperties": false,
+        "description": "Per-line warehouse receive. Every line requires move_id, quantity_done, and warehouse_id. Rejects location fields and request-level warehouse_id.",
         "properties": {
           "lines": {
             "type": "array",
+            "minItems": 1,
             "items": {
               "type": "object",
+              "required": [
+                "move_id",
+                "quantity_done",
+                "warehouse_id"
+              ],
+              "additionalProperties": false,
               "properties": {
                 "move_id": {
-                  "type": "integer"
+                  "type": "integer",
+                  "minimum": 1
                 },
                 "quantity_done": {
-                  "type": "number"
+                  "type": "number",
+                  "exclusiveMinimum": 0
                 },
-                "location_dest_id": {
-                  "type": "integer"
-                },
-                "destinations": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "required": [
-                      "location_id",
-                      "quantity"
-                    ],
-                    "properties": {
-                      "location_id": {
-                        "type": "integer"
-                      },
-                      "quantity": {
-                        "type": "number"
-                      }
-                    }
-                  }
+                "warehouse_id": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Assigned warehouse for this line only."
                 }
               }
             }
           }
+        },
+        "example": {
+          "lines": [
+            {
+              "move_id": 263,
+              "quantity_done": 10,
+              "warehouse_id": 1
+            },
+            {
+              "move_id": 264,
+              "quantity_done": 20,
+              "warehouse_id": 2
+            }
+          ]
         }
       },
       "WarehouseDispatchRequest": {
@@ -1949,28 +1958,51 @@
         "required": [
           "lines"
         ],
+        "additionalProperties": false,
+        "description": "Per-line warehouse dispatch. Every line requires move_id, quantity_done, and warehouse_id. Rejects location fields and request-level warehouse_id. Same contract shape as WarehouseReceiveRequest.",
         "properties": {
           "lines": {
             "type": "array",
+            "minItems": 1,
             "items": {
               "type": "object",
               "required": [
                 "move_id",
-                "quantity_done"
+                "quantity_done",
+                "warehouse_id"
               ],
+              "additionalProperties": false,
               "properties": {
                 "move_id": {
-                  "type": "integer"
+                  "type": "integer",
+                  "minimum": 1
                 },
                 "quantity_done": {
-                  "type": "number"
+                  "type": "number",
+                  "exclusiveMinimum": 0
                 },
-                "location_id": {
-                  "type": "integer"
+                "warehouse_id": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Assigned warehouse for this line only."
                 }
               }
             }
           }
+        },
+        "example": {
+          "lines": [
+            {
+              "move_id": 271,
+              "quantity_done": 3,
+              "warehouse_id": 2
+            },
+            {
+              "move_id": 272,
+              "quantity_done": 5,
+              "warehouse_id": 1
+            }
+          ]
         }
       },
       "WarehouseTransferCreate": {
@@ -2004,9 +2036,6 @@
                 },
                 "quantity": {
                   "type": "number"
-                },
-                "location_id": {
-                  "type": "integer"
                 }
               }
             }
@@ -2443,7 +2472,7 @@
           "Trade"
         ],
         "summary": "Submit wholesale application",
-        "description": "Buyer, merchant, marketer, and distributor. Own application only.",
+        "description": "Authenticated portal customer (including trade_status=normal before Almohit role-group grant). Own application only. Role is taken from the account and cannot be changed via payload.",
         "responses": {
           "201": {
             "description": "Application created."
@@ -2479,7 +2508,7 @@
           "Trade"
         ],
         "summary": "Latest own application",
-        "description": "Buyer, merchant, marketer, and distributor. `data` may be null.",
+        "description": "Authenticated portal customer may read only their own latest application (including before approval). `data` may be null.",
         "responses": {
           "200": {
             "description": "Application or null."
@@ -4256,8 +4285,8 @@
         "tags": [
           "Buyer"
         ],
-        "summary": "Receive incoming stock",
-        "description": "Buyer only. Sets native done quantities then `stock.picking.button_validate()`. Partial quantities follow native backorder. Does not write `qty_available` or `stock.quant`.",
+        "summary": "Disabled — warehouse managers validate receipts",
+        "description": "Always returns 403 RECEIPT_HANDED_TO_WAREHOUSE. Does not mutate stock. Use POST /almohit/api/warehouse/receipts/{id}/receive.",
         "parameters": [
           {
             "name": "picking_id",
@@ -4279,20 +4308,14 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Updated receipt, including backorders when created."
-          },
-          "400": {
-            "description": "INVALID_FIELDS, RECEIPT_NOT_READY, INVALID_RECEIPT_QUANTITY"
-          },
-          "401": {
-            "$ref": "#/components/responses/AuthRequired"
-          },
           "403": {
-            "$ref": "#/components/responses/AccessDenied"
+            "description": "RECEIPT_HANDED_TO_WAREHOUSE (stock path removed)"
           },
           "404": {
             "description": "RECEIPT_NOT_FOUND"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthRequired"
           }
         }
       }
@@ -4352,7 +4375,7 @@
         "tags": [
           "Warehouse"
         ],
-        "summary": "Stock quants",
+        "summary": "Stock quants with warehouse and stock_role",
         "security": [
           {
             "sessionCookie": []
@@ -4382,7 +4405,7 @@
         ],
         "responses": {
           "200": {
-            "description": "ok:true envelope"
+            "description": "ok:true with items[{id, product, warehouse, location, stock_role, quantity, reserved_quantity, available_quantity}]"
           },
           "401": {
             "description": "AUTHENTICATION_REQUIRED"
@@ -4390,7 +4413,8 @@
           "403": {
             "description": "ACCESS_DENIED | WAREHOUSE_APPROVAL_REQUIRED | WAREHOUSE_ASSIGNMENT_REQUIRED | WAREHOUSE_PERMISSION_DENIED | CROSS_COMPANY_DENIED | RECEIPT_BUYER_ONLY | RECEIPT_HANDED_TO_WAREHOUSE"
           }
-        }
+        },
+        "description": "Lists non-zero quants under assigned warehouses (including archived Input/Output/Pack). Each item includes stock_role inferred from warehouse routing settings: storage | dispatch_staging | pack | input | other. dispatch_staging (Output) is staged for distributor delivery and must not be treated as free stock for another warehouse dispatch. free_qty used by dispatch is unchanged."
       }
     },
     "/almohit/api/warehouse/movements": {
@@ -4487,6 +4511,7 @@
           "Warehouse"
         ],
         "summary": "Receipt detail",
+        "description": "Detail includes lines (move_id, qtys) and available_warehouses for per-line receive. current_warehouse / suggested_warehouse are informational only and are not required for POST receive.",
         "security": [
           {
             "sessionCookie": []
@@ -4520,7 +4545,8 @@
         "tags": [
           "Warehouse"
         ],
-        "summary": "Receive goods (split destinations / partial → backorder)",
+        "summary": "Receive goods with per-line warehouse",
+        "description": "Requires receipt permission. Every line must include move_id, quantity_done, and warehouse_id from assigned warehouses. Location fields and request-level warehouse_id are rejected. Lines for different warehouses are split onto native incoming pickings per warehouse operation type, then validated atomically. Response includes result_pickings and backorders.",
         "security": [
           {
             "sessionCookie": []
@@ -4528,25 +4554,16 @@
         ],
         "responses": {
           "200": {
-            "description": "ok:true"
-          },
-          "201": {
-            "description": "created"
+            "description": "ok:true with lines (warehouse per product), result_pickings, backorders"
           },
           "400": {
-            "description": "validation"
-          },
-          "404": {
-            "description": "not found"
-          },
-          "409": {
-            "description": "IMPORT_DUPLICATE | RECEIPT_ALREADY_DONE | ISSUE_ALREADY_DISPATCHED | TRANSFER_NEEDS_RECONCILE | ..."
-          },
-          "401": {
-            "description": "AUTHENTICATION_REQUIRED"
+            "description": "INVALID_FIELDS | INVALID_QUANTITY | DUPLICATE_MOVE"
           },
           "403": {
-            "description": "ACCESS_DENIED | WAREHOUSE_APPROVAL_REQUIRED | WAREHOUSE_ASSIGNMENT_REQUIRED | WAREHOUSE_PERMISSION_DENIED | CROSS_COMPANY_DENIED | RECEIPT_BUYER_ONLY | RECEIPT_HANDED_TO_WAREHOUSE"
+            "description": "WAREHOUSE_PERMISSION_DENIED | WAREHOUSE_NOT_ALLOWED"
+          },
+          "409": {
+            "description": "RECEIPT_ALREADY_DONE | RECEIPT_BUSY | RECEIPT_INCOMPLETE | RECEIPT_LINE_ALREADY_DONE"
           }
         },
         "requestBody": {
@@ -4555,28 +4572,6 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/WarehouseReceiveRequest"
-              },
-              "example": {
-                "lines": [
-                  {
-                    "move_id": 10,
-                    "quantity_done": 5,
-                    "location_dest_id": 8
-                  },
-                  {
-                    "move_id": 11,
-                    "destinations": [
-                      {
-                        "location_id": 8,
-                        "quantity": 3
-                      },
-                      {
-                        "location_id": 26,
-                        "quantity": 2
-                      }
-                    ]
-                  }
-                ]
               }
             }
           }
@@ -4644,6 +4639,7 @@
           "Warehouse"
         ],
         "summary": "Issue detail",
+        "description": "Detail includes lines, available_warehouses (free_qty = lot_stock + child shelves via Quant._get_available_quantity strict=False; excludes Output), dispatch_picking_id/ids, result_pickings. current/suggested informational only.",
         "security": [
           {
             "sessionCookie": []
@@ -4677,7 +4673,7 @@
         "tags": [
           "Warehouse"
         ],
-        "summary": "Dispatch Stock→Output without completing customer delivery",
+        "summary": "Dispatch goods with per-line warehouse",
         "security": [
           {
             "sessionCookie": []
@@ -4685,25 +4681,16 @@
         ],
         "responses": {
           "200": {
-            "description": "ok:true"
-          },
-          "201": {
-            "description": "created"
+            "description": "ok:true with lines (warehouse per product), result_pickings, dispatch_state=dispatched, sale_order"
           },
           "400": {
-            "description": "validation"
-          },
-          "404": {
-            "description": "not found"
-          },
-          "409": {
-            "description": "IMPORT_DUPLICATE | RECEIPT_ALREADY_DONE | ISSUE_ALREADY_DISPATCHED | TRANSFER_NEEDS_RECONCILE | ..."
-          },
-          "401": {
-            "description": "AUTHENTICATION_REQUIRED"
+            "description": "INVALID_FIELDS | INVALID_QUANTITY | DUPLICATE_MOVE | WAREHOUSE_CONFIG"
           },
           "403": {
-            "description": "ACCESS_DENIED | WAREHOUSE_APPROVAL_REQUIRED | WAREHOUSE_ASSIGNMENT_REQUIRED | WAREHOUSE_PERMISSION_DENIED | CROSS_COMPANY_DENIED | RECEIPT_BUYER_ONLY | RECEIPT_HANDED_TO_WAREHOUSE"
+            "description": "WAREHOUSE_PERMISSION_DENIED | WAREHOUSE_NOT_ALLOWED"
+          },
+          "409": {
+            "description": "ISSUE_ALREADY_DONE | ISSUE_ALREADY_DISPATCHED | ISSUE_BUSY | INSUFFICIENT_STOCK | ISSUE_DISPATCH_INCOMPLETE | PAYMENT_REQUIRED"
           }
         },
         "requestBody": {
@@ -4711,16 +4698,55 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/WarehouseDispatchRequest"
-              },
-              "example": {
-                "lines": [
-                  {
-                    "move_id": 55,
-                    "quantity_done": 2,
-                    "location_id": 8
+                "type": "object",
+                "required": [
+                  "lines"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "distributor_user_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional. res.users id of an approved distributor. Maps to stock.picking.user_id."
+                  },
+                  "lines": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "move_id",
+                        "quantity_done",
+                        "warehouse_id"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "move_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity_done": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "warehouse_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
                   }
-                ]
+                },
+                "example": {
+                  "distributor_user_id": 275,
+                  "lines": [
+                    {
+                      "move_id": 271,
+                      "quantity_done": 3,
+                      "warehouse_id": 1
+                    }
+                  ]
+                }
               }
             }
           }
@@ -4734,7 +4760,8 @@
               "type": "integer"
             }
           }
-        ]
+        ],
+        "description": "Requires issue permission. Every line must include move_id, quantity_done, and warehouse_id. Optional distributor_user_id assigns stock.picking.user_id (native Odoo Responsible). Omit to leave assignee unchanged; null/0 rejected. Location fields and request-level warehouse_id are rejected. Payment checks still run on user_id write. Response includes distributor_user_id and result_pickings."
       }
     },
     "/almohit/api/warehouse/transfers": {
@@ -4833,8 +4860,7 @@
                 "lines": [
                   {
                     "product_id": 158,
-                    "quantity": 5,
-                    "location_id": 8
+                    "quantity": 5
                   }
                 ]
               }
@@ -4987,9 +5013,6 @@
                         "quantity": {
                           "type": "number"
                         },
-                        "location_id": {
-                          "type": "integer"
-                        },
                         "reason": {
                           "type": "string",
                           "enum": [
@@ -5010,7 +5033,6 @@
                   {
                     "line_id": 3,
                     "quantity": 4,
-                    "location_id": 18,
                     "reason": "missing"
                   }
                 ]
@@ -5237,6 +5259,485 @@
         ]
       }
     },
+    "/almohit/api/warehouse/packing/boms": {
+      "get": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "List manufacturing BoMs for packing",
+        "description": "Requires packing. Lists normal mrp.bom rows (components + by-products) scoped to assigned warehouses. Shared BoMs without operation type are readable.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok:true paginated BoMs"
+          },
+          "403": {
+            "description": "WAREHOUSE_PERMISSION_DENIED | WAREHOUSE_ASSIGNMENT_REQUIRED | ..."
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Create warehouse-scoped packing BoM",
+        "description": "Requires packing_bom_manage. Creates mrp.bom type=normal bound to the warehouse manufacturing operation type. Does not accept location fields. Kit/subcontracting types are not supported.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "product_id",
+                  "warehouse_id",
+                  "quantity",
+                  "components"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "product_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "warehouse_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Assigned warehouse; backend resolves manufacturing operation type (no location_id)."
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "components": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "product_id",
+                        "quantity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "product_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "uom_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  },
+                  "byproducts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "product_id",
+                        "quantity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "product_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "uom_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "cost_share": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "product_id": 42,
+                  "warehouse_id": 2,
+                  "quantity": 1,
+                  "components": [
+                    {
+                      "product_id": 10,
+                      "quantity": 10
+                    }
+                  ],
+                  "byproducts": [
+                    {
+                      "product_id": 11,
+                      "quantity": 2,
+                      "cost_share": 10
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ok:true created BoM detail"
+          },
+          "400": {
+            "description": "INVALID_FIELDS | INVALID_BOM | DUPLICATE_COMPONENT | ..."
+          },
+          "403": {
+            "description": "WAREHOUSE_PERMISSION_DENIED | WAREHOUSE_NOT_ALLOWED | ..."
+          }
+        }
+      }
+    },
+    "/almohit/api/warehouse/packing/boms/{bom_id}": {
+      "get": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "BoM detail for packing",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bom_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok:true BoM with components and byproducts"
+          },
+          "404": {
+            "description": "BOM_NOT_FOUND"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Update warehouse-scoped packing BoM",
+        "description": "Requires packing_bom_manage. Shared BoMs (no picking type) return BOM_SHARED_READONLY. Unassigned warehouse BoMs return BOM_WAREHOUSE_DENIED. Confirmed/done linked MOs return BOM_IN_USE. Type cannot be changed to kit/subcontracting.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bom_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "product_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "warehouse_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "components": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "product_id",
+                        "quantity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "product_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "uom_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  },
+                  "byproducts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "product_id",
+                        "quantity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "product_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "uom_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "cost_share": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "quantity": 2,
+                  "components": [
+                    {
+                      "product_id": 10,
+                      "quantity": 20
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok:true updated BoM detail"
+          },
+          "403": {
+            "description": "BOM_SHARED_READONLY | BOM_WAREHOUSE_DENIED | WAREHOUSE_PERMISSION_DENIED"
+          },
+          "409": {
+            "description": "BOM_IN_USE"
+          }
+        }
+      }
+    },
+    "/almohit/api/warehouse/packing/orders": {
+      "get": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "List packing manufacturing orders",
+        "description": "Requires packing. Lists mrp.production intersecting assigned warehouses.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "draft",
+                "confirmed",
+                "progress",
+                "to_close",
+                "done",
+                "cancel"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok:true paginated manufacturing orders"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Create draft packing manufacturing order",
+        "description": "Requires packing. Creates draft mrp.production only. Confirm/complete are separate endpoints.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "bom_id",
+                  "warehouse_id",
+                  "quantity"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "bom_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "warehouse_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "idempotency_key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "description": "Optional retry key. Same key returns the existing draft MO."
+                  }
+                },
+                "example": {
+                  "bom_id": 12,
+                  "warehouse_id": 2,
+                  "quantity": 10,
+                  "idempotency_key": "mo-create-2026-001"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ok:true new draft MO"
+          },
+          "200": {
+            "description": "ok:true existing MO returned for idempotency_key"
+          },
+          "403": {
+            "description": "WAREHOUSE_PERMISSION_DENIED | BOM_WAREHOUSE_MISMATCH | WAREHOUSE_NOT_ALLOWED"
+          }
+        }
+      }
+    },
+    "/almohit/api/warehouse/packing/orders/{production_id}": {
+      "get": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Packing manufacturing order detail",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "production_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok:true with components and finished moves"
+          },
+          "404": {
+            "description": "PACKING_ORDER_NOT_FOUND"
+          }
+        }
+      }
+    },
     "/almohit/api/warehouse/inventory": {
       "get": {
         "tags": [
@@ -5399,6 +5900,269 @@
             }
           }
         ]
+      }
+    },
+    "/almohit/api/warehouse/packing/orders/{production_id}/confirm": {
+      "post": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Confirm packing manufacturing order",
+        "description": "Requires packing. Draft only -> native \u0007ction_confirm + \u0007ction_assign. Idempotent if already confirmed/progress. Does not post stock. Empty JSON body. No location fields.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "production_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok:true MO detail with reservations"
+          },
+          "403": {
+            "description": "WAREHOUSE_PERMISSION_DENIED | WAREHOUSE_NOT_ALLOWED | BOM_WAREHOUSE_MISMATCH"
+          },
+          "409": {
+            "description": "PACKING_ORDER_ALREADY_DONE | PACKING_ORDER_CANCELLED | PACKING_ORDER_BUSY"
+          }
+        }
+      }
+    },
+    "/almohit/api/warehouse/packing/orders/{production_id}/complete": {
+      "post": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "Complete packing manufacturing order",
+        "description": "Requires packing. Sets actual finished/byproduct/component quantities then calls native \button_mark_done. Resolves consumption/backorder wizards safely. Atomic savepoint + advisory lock against concurrent completes. No location_id/location_dest_id.",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "production_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "finished_qty"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "finished_qty": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Actual finished product qty to produce now."
+                  },
+                  "quantity": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Alias of finished_qty."
+                  },
+                  "finished_lot_id": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "finished_lot_name": {
+                    "type": "string",
+                    "description": "Create/find finished lot/serial when tracking is enabled."
+                  },
+                  "create_backorder": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "components": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "product_id",
+                        "quantity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "product_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "minimum": 0,
+                          "description": "Actual consumed qty (posted once on MO raw move)."
+                        },
+                        "move_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "lot_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "lot_name": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "byproducts": {
+                    "type": "array",
+                    "description": "Only products already on the MO/BoM by-products.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "product_id",
+                        "quantity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "product_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "move_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "lot_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "lot_name": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "scraps": {
+                    "type": "array",
+                    "description": "Optional stock.scrap lines for MO products. Deducted once; do not also include the same physical units in components.",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "product_id",
+                        "quantity"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "product_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "quantity": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "lot_id": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "lot_name": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "finished_qty": 8,
+                  "finished_lot_name": "GRADE-A-001",
+                  "create_backorder": false,
+                  "components": [
+                    {
+                      "product_id": 10,
+                      "quantity": 85
+                    }
+                  ],
+                  "byproducts": [
+                    {
+                      "product_id": 11,
+                      "quantity": 3
+                    }
+                  ],
+                  "scraps": [
+                    {
+                      "product_id": 10,
+                      "quantity": 1
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok:true done MO with consumed/produced/scrap quantities"
+          },
+          "400": {
+            "description": "INVALID_FIELDS | BYPRODUCT_NOT_ON_BOM | LOT_REQUIRED"
+          },
+          "409": {
+            "description": "PACKING_ORDER_ALREADY_DONE | INSUFFICIENT_MATERIALS | CONSUMPTION_STRICT | PACKING_ORDER_BUSY"
+          }
+        }
+      }
+    },
+    "/almohit/api/warehouse/distributors": {
+      "get": {
+        "tags": [
+          "Warehouse"
+        ],
+        "summary": "List assignable distributors",
+        "description": "Requires warehouse manager + issue permission. Returns active approved users with almohit_app_role=distributor (id, name only).",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok:true with items[{id, name}]"
+          },
+          "401": {
+            "description": "AUTHENTICATION_REQUIRED"
+          },
+          "403": {
+            "description": "WAREHOUSE_PERMISSION_DENIED | WAREHOUSE_ASSIGNMENT_REQUIRED"
+          }
+        }
       }
     }
   }

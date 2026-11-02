@@ -251,23 +251,22 @@ def create_transfer(partner, payload):
     for row in lines:
         if not isinstance(row, dict):
             return error("INVALID_FIELDS", "Each transfer line must be an object.", 400)
+        extra_line = set(row) - {"product_id", "quantity", "uom_id"}
+        if extra_line:
+            return error("INVALID_FIELDS", "One or more line fields are not allowed.", 400)
         product_id = strict_int(row.get("product_id"))
         qty = strict_float(row.get("quantity"))
         uom_id = strict_int(row.get("uom_id"))
-        location_id = strict_int(row.get("location_id"))
         if not product_id or qty is None or qty <= 0:
             return error("INVALID_FIELDS", "product_id and positive quantity are required.", 400)
         product = partner.env["product.product"].sudo().browse(product_id).exists()
         if not product:
             return error("PRODUCT_NOT_FOUND", "Product not found.", 404)
         uom = partner.env["uom.uom"].sudo().browse(uom_id).exists() if uom_id else product.uom_id
-        location = (
-            partner.env["stock.location"].sudo().browse(location_id).exists()
-            if location_id
-            else source.lot_stock_id
-        )
+        # Odoo stock location for the source warehouse (assign may use child shelves).
+        location = source.lot_stock_id
         if location.id not in allowed_src:
-            return error("WAREHOUSE_NOT_ALLOWED", "Source location not allowed.", 403)
+            return error("WAREHOUSE_NOT_ALLOWED", "Source warehouse stock location not allowed.", 403)
         line_vals.append({
             "product_id": product.id,
             "product_uom_id": uom.id,
@@ -415,9 +414,13 @@ def receive_transfer(partner, transfer_id, payload):
     line_by_id = {line.id: line for line in transfer.line_ids}
     receive_plan = []
     for row in payload["lines"]:
+        if not isinstance(row, dict):
+            return error("INVALID_FIELDS", "Each receive line must be an object.", 400)
+        extra_line = set(row) - {"line_id", "quantity", "reason"}
+        if extra_line:
+            return error("INVALID_FIELDS", "One or more line fields are not allowed.", 400)
         line_id = strict_int(row.get("line_id"))
         qty = strict_float(row.get("quantity"))
-        location_id = strict_int(row.get("location_id"))
         reason = (row.get("reason") or "missing").strip().lower()
         if not line_id or qty is None or qty < 0:
             return error("INVALID_FIELDS", "Invalid line_id or quantity.", 400)
@@ -431,13 +434,9 @@ def receive_transfer(partner, transfer_id, payload):
                 "Cannot receive more than remaining dispatched quantity.",
                 409,
             )
-        location = (
-            partner.env["stock.location"].sudo().browse(location_id).exists()
-            if location_id
-            else dest.lot_stock_id
-        )
+        location = dest.lot_stock_id
         if location.id not in allowed_dest:
-            return error("WAREHOUSE_NOT_ALLOWED", "Destination location not allowed.", 403)
+            return error("WAREHOUSE_NOT_ALLOWED", "Destination warehouse stock location not allowed.", 403)
         receive_plan.append((line, qty, location, reason))
 
     move_commands = []

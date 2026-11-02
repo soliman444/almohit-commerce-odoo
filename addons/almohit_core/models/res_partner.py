@@ -58,7 +58,7 @@ class ResPartner(models.Model):
 
     def write(self, vals):
         res = super().write(vals)
-        if "almohit_app_role" in vals:
+        if "almohit_app_role" in vals or "almohit_trade_status" in vals:
             self._sync_almohit_role_groups()
         return res
 
@@ -71,6 +71,7 @@ class ResPartner(models.Model):
         return groups
 
     def _sync_almohit_role_groups(self):
+        """Grant Almohit role groups only after wholesale approval."""
         role_groups = self._almohit_role_groups()
         all_group_ids = {group.id for group in role_groups.values()}
         Users = self.env["res.users"].sudo().with_context(active_test=False)
@@ -78,13 +79,10 @@ class ResPartner(models.Model):
             users = Users.search([("partner_id", "=", partner.id)])
             if not users:
                 continue
-            target = role_groups.get(partner.almohit_app_role)
-            commands = [
-                (3, group_id)
-                for group_id in all_group_ids
-                if not target or group_id != target.id
-            ]
-            if target:
-                commands.append((4, target.id))
+            commands = [(3, group_id) for group_id in all_group_ids]
+            if partner.almohit_trade_status == "approved":
+                target = role_groups.get(partner.almohit_app_role)
+                if target:
+                    commands.append((4, target.id))
             if commands:
                 users.write({"groups_id": commands})

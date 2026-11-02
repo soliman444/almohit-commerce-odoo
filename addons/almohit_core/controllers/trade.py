@@ -2,10 +2,7 @@ from odoo import http
 from odoo.http import request
 
 from ..services.api import error, read_json_body, success
-from ..services.customer import (
-    require_almohit_group,
-    require_customer_partner,
-)
+from ..services.customer import require_customer_partner
 from ..services.trade import (
     APPLICATION_ALREADY_APPROVED,
     APPLICATION_ALREADY_PENDING,
@@ -20,20 +17,6 @@ from ..services.trade import (
     serialize_application,
 )
 
-_TRADE_GROUPS = (
-    "almohit_core.group_almohit_buyer",
-    "almohit_core.group_almohit_merchant",
-    "almohit_core.group_almohit_marketer",
-    "almohit_core.group_almohit_distributor",
-    "almohit_core.group_almohit_warehouse_manager",
-)
-
-_COMMERCE_GROUPS = (
-    "almohit_core.group_almohit_merchant",
-    "almohit_core.group_almohit_marketer",
-    "almohit_core.group_almohit_distributor",
-)
-
 
 class AlmohitTradeController(http.Controller):
 
@@ -45,21 +28,10 @@ class AlmohitTradeController(http.Controller):
         csrf=False,
     )
     def create_application(self, **kwargs):
-        err = require_almohit_group(*_TRADE_GROUPS)
-        if err:
-            return err
+        # Portal users may submit before receiving any Almohit role group.
         partner, err = require_customer_partner()
         if err:
             return err
-        role = partner.almohit_app_role or "merchant"
-        if role == "buyer":
-            pass
-        elif role == "warehouse_manager":
-            pass
-        else:
-            err = require_almohit_group(*_COMMERCE_GROUPS)
-            if err:
-                return err
         payload, err = read_json_body()
         if err:
             return err
@@ -90,24 +62,16 @@ class AlmohitTradeController(http.Controller):
                 400,
             )
 
-        if role == "buyer":
-            requested_role = payload.get("role", "buyer")
-            if requested_role != "buyer":
+        account_role = (partner.almohit_app_role or "merchant").strip().lower()
+        requested_role = payload.get("role")
+        if requested_role not in (None, ""):
+            if str(requested_role).strip().lower() != account_role:
                 return error(
                     "INVALID_ROLE",
-                    "Buyer accounts must request buyer approval.",
+                    "Role must match the registered account role.",
                     400,
                 )
-            payload["role"] = "buyer"
-        elif role == "warehouse_manager":
-            requested_role = payload.get("role", "warehouse_manager")
-            if requested_role != "warehouse_manager":
-                return error(
-                    "INVALID_ROLE",
-                    "Warehouse manager accounts must request warehouse_manager approval.",
-                    400,
-                )
-            payload["role"] = "warehouse_manager"
+        payload["role"] = account_role
 
         application, code = create_own_application(request.env, partner, payload)
         if code and not isinstance(code, str):
@@ -157,7 +121,7 @@ class AlmohitTradeController(http.Controller):
         if code == INVALID_ROLE:
             return error(
                 "INVALID_ROLE",
-                "Role must be merchant, buyer, distributor, marketer, or warehouse_manager.",
+                "Role must match the registered account role.",
                 400,
             )
 
@@ -171,16 +135,9 @@ class AlmohitTradeController(http.Controller):
         csrf=False,
     )
     def get_application(self, **kwargs):
-        err = require_almohit_group(*_TRADE_GROUPS)
-        if err:
-            return err
+        # Authenticated portal partner may read only their own latest application.
         partner, err = require_customer_partner()
         if err:
             return err
-        role = partner.almohit_app_role or "merchant"
-        if role not in ("buyer", "warehouse_manager"):
-            err = require_almohit_group(*_COMMERCE_GROUPS)
-            if err:
-                return err
         application = get_latest_own_application(request.env, partner)
         return success(serialize_application(application))

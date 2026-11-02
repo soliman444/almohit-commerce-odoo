@@ -15,17 +15,19 @@ class ResConfigSettings(models.TransientModel):
 
     almohit_receipt_validation_mode = fields.Selection(
         selection=[
-            ("both", "Buyer and Warehouse Manager"),
+            ("both", "Buyer and Warehouse Manager (legacy)"),
             ("warehouse_only", "Warehouse Manager only"),
-            ("buyer_only", "Buyer only"),
+            ("buyer_only", "Buyer only (legacy)"),
         ],
         string="Purchase Receipt Validation",
         help=(
             "Controls who may validate purchase incoming receipts. "
-            "Default both keeps /almohit/api/buyer/receipts working while "
-            "warehouse managers use /almohit/api/warehouse/receipts."
+            "Default warehouse_only: Buyer creates and confirms POs; "
+            "Warehouse Manager alone posts stock via /almohit/api/warehouse/receipts. "
+            "Buyer POST .../buyer/receipts/{id}/receive always returns "
+            "RECEIPT_HANDED_TO_WAREHOUSE and does not move stock."
         ),
-        default="both",
+        default="warehouse_only",
         config_parameter=ICP_RECEIPT_MODE,
     )
     almohit_storefront_warehouse_id = fields.Many2one(
