@@ -158,7 +158,6 @@ list_distributors = warehouse_issues.list_distributors
 list_transfers = warehouse_transfers.list_transfers
 get_transfer = warehouse_transfers.get_transfer
 create_transfer = warehouse_transfers.create_transfer
-dispatch_transfer = warehouse_transfers.dispatch_transfer
 receive_transfer = warehouse_transfers.receive_transfer
 cancel_transfer = warehouse_transfers.cancel_transfer
 reject_transfer = warehouse_transfers.reject_transfer

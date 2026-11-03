@@ -1,4 +1,5 @@
 from odoo import _, fields, models
+from odoo.exceptions import UserError
 
 from ..services.warehouse_common import ICP_RECEIPT_MODE
 from ..services.whatsapp import (
@@ -6,6 +7,7 @@ from ..services.whatsapp import (
     ICP_ENABLED,
     ICP_SERVICE_TOKEN,
     ICP_SERVICE_URL,
+    normalize_account_phone,
     whatsapp_config,
 )
 
@@ -41,8 +43,12 @@ class ResConfigSettings(models.TransientModel):
         help="When disabled, business operations still succeed and WhatsApp is skipped.",
     )
     almohit_whatsapp_account_phone = fields.Char(
-        string="WhatsApp Account Number",
-        help="Business WhatsApp number used to send Almohit notifications, for example +9665xxxxxxxx.",
+        string="Desired WhatsApp Number",
+        help=(
+            "Number you want linked for Almohit notifications (international form, e.g. +9665xxxxxxxx). "
+            "Saving this field does not disconnect the live session — use Change account on the "
+            "WhatsApp Account screen to unlink and scan a new QR."
+        ),
     )
     almohit_whatsapp_service_url = fields.Char(
         string="WhatsApp Service URL",
@@ -76,8 +82,16 @@ class ResConfigSettings(models.TransientModel):
     def set_values(self):
         super().set_values()
         icp = self.env["ir.config_parameter"].sudo()
+        raw_phone = (self.almohit_whatsapp_account_phone or "").strip()
+        if raw_phone:
+            normalized = normalize_account_phone(raw_phone)
+            if not normalized:
+                raise UserError(
+                    _("Enter the WhatsApp number in international format, for example +9665xxxxxxxx.")
+                )
+            raw_phone = normalized
         icp.set_param(ICP_ENABLED, "True" if self.almohit_whatsapp_enabled else "False")
-        icp.set_param(ICP_ACCOUNT_PHONE, (self.almohit_whatsapp_account_phone or "").strip())
+        icp.set_param(ICP_ACCOUNT_PHONE, raw_phone)
         icp.set_param(
             ICP_SERVICE_URL,
             (self.almohit_whatsapp_service_url or "").strip().rstrip("/"),

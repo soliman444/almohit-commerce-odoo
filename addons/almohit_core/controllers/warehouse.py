@@ -120,16 +120,6 @@ class AlmohitWarehouseController(http.Controller):
             return err
         return warehouse_service.get_transfer(partner, transfer_id)
 
-    @http.route("/almohit/api/warehouse/transfers/<int:transfer_id>/dispatch", type="http", auth="user", methods=["POST"], csrf=False)
-    def dispatch_transfer(self, transfer_id, **kwargs):
-        partner, err = self._partner()
-        if err:
-            return err
-        payload, body_err = read_json_body()
-        if body_err:
-            return body_err
-        return warehouse_service.dispatch_transfer(partner, transfer_id, payload or {})
-
     @http.route("/almohit/api/warehouse/transfers/<int:transfer_id>/receive", type="http", auth="user", methods=["POST"], csrf=False)
     def receive_transfer(self, transfer_id, **kwargs):
         partner, err = self._partner()

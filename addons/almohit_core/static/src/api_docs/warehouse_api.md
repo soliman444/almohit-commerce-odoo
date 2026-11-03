@@ -97,9 +97,8 @@ Creates one native internal stock→output picking per selected warehouse (child
 
 ### Transfers
 - `GET /transfers?direction=incoming|outgoing|all&status=`
-- `POST /transfers`
+- `POST /transfers` — creates the transfer **and** dispatches stock→Transit in one request. State becomes `dispatched` (awaits destination receive). Optional `idempotency_key` prevents duplicate create+dispatch on retry.
 - `GET /transfers/{id}`
-- `POST /transfers/{id}/dispatch`
 - `POST /transfers/{id}/receive`
 - `POST /transfers/{id}/cancel`
 - `POST /transfers/{id}/reject`
@@ -108,10 +107,11 @@ Creates one native internal stock→output picking per selected warehouse (child
 - `POST /discrepancies/{id}/resolve`
 
 ```json
-// create
+// create + dispatch
 {
   "source_warehouse_id": 1,
   "dest_warehouse_id": 2,
+  "idempotency_key": "wh-tr-2026-001",
   "lines": [{"product_id": 9, "quantity": 5}]
 }
 
@@ -126,9 +126,9 @@ Creates one native internal stock→output picking per selected warehouse (child
 {"note": "Written off after QC"}
 ```
 
-Optional create line field: `uom_id`. Location fields are not accepted.
+Optional create fields: `note`, `idempotency_key`; optional line field: `uom_id`. Location fields are not accepted. Source and destination warehouses must both be assigned. No separate `/dispatch` route.
 
-States: `draft → requested → dispatched → partially_received|received|discrepancy → closed` (+ `rejected` / `cancelled`).
+States: `draft → requested → dispatched → partially_received|received|discrepancy → closed` (+ `rejected` / `cancelled`). `POST /transfers` returns `dispatched` on success.
 
 ### Packing / manufacturing (phase 2 — BoM manage + draft MO)
 Native Odoo `mrp.bom` / `mrp.production`. Confirm / complete are **not** enabled yet. App must **not** send `location_id` / `location_dest_id`.

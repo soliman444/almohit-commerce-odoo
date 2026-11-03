@@ -40,6 +40,12 @@ class AlmohitWarehouseTransfer(models.Model):
     dispatched_at = fields.Datetime(readonly=True, copy=False)
     received_at = fields.Datetime(readonly=True, copy=False)
     note = fields.Text()
+    idempotency_key = fields.Char(
+        string="Idempotency Key",
+        copy=False,
+        index=True,
+        help="Optional client key so POST /transfers create+dispatch is not duplicated.",
+    )
     line_ids = fields.One2many(
         "almohit.warehouse.transfer.line",
         "transfer_id",
@@ -54,6 +60,14 @@ class AlmohitWarehouseTransfer(models.Model):
         string="Discrepancies",
         copy=False,
     )
+
+    _sql_constraints = [
+        (
+            "almohit_transfer_idempotency_uniq",
+            "unique(company_id, idempotency_key)",
+            "Transfer idempotency key must be unique per company.",
+        ),
+    ]
 
     @api.model_create_multi
     def create(self, vals_list):

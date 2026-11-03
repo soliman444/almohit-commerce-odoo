@@ -5,41 +5,62 @@
             <div class="o_almohit_whatsapp_card">
                 <h1>WhatsApp Account</h1>
                 <p class="text-muted">
-                    This screen follows the live WhatsApp session. The QR appears only when there is no connection.
+                    Live session status comes from the WhatsApp service. The desired number is saved in settings and is not proof of connection.
                 </p>
 
-                <div t-if="state.connected" class="alert alert-success mb-3" role="status">
-                    <strong>Connected</strong>
-                    <span t-if="state.phone"> — <t t-esc="state.phone"/></span>
-                </div>
-                <div t-elif="state.loading" class="alert alert-info mb-3" role="status">
-                    Checking WhatsApp connection...
-                </div>
-                <div t-else="" class="alert alert-warning mb-3" role="status">
-                    <strong>Not connected</strong>
+                <div t-att-class="statusAlertClass" role="status">
+                    <strong t-esc="statusTitle"/>
                     <span t-if="state.status_text"> — <t t-esc="state.status_text"/></span>
                 </div>
 
-                <div t-if="state.connected and state.phone" class="mb-3">
-                    <div class="text-muted">Account number</div>
-                    <div class="fs-5" t-esc="state.phone"/>
-                </div>
-                <div t-elif="state.account_phone" class="mb-3 text-muted">
-                    Last saved number: <t t-esc="state.account_phone"/>
+                <div class="mb-3">
+                    <label class="form-label text-muted" for="almohit_wa_desired">Desired number</label>
+                    <input
+                        id="almohit_wa_desired"
+                        type="tel"
+                        class="form-control"
+                        placeholder="+9665xxxxxxxx"
+                        t-att-value="state.desired_phone"
+                        t-att-disabled="state.busy || !state.can_manage"
+                        t-on-input="onDesiredPhoneInput"/>
+                    <div class="form-text">International format required. Editing this field does not disconnect the session.</div>
                 </div>
 
-                <div t-if="!state.connected" class="o_almohit_whatsapp_qr mb-4">
+                <div t-if="state.connected and state.connected_phone" class="mb-3">
+                    <div class="text-muted">Connected number</div>
+                    <div class="fs-5" t-esc="state.connected_phone"/>
+                </div>
+                <div t-elif="state.connected" class="mb-3 text-muted">
+                    Connected, but the linked number could not be read.
+                </div>
+
+                <div t-if="state.phone_mismatch" class="alert alert-danger mb-3" role="alert">
+                    The linked number does not match the desired number. The new session was not treated as complete. Disconnect only if you confirm a change.
+                </div>
+
+                <div t-if="!state.connected and state.phase !== 'service_unreachable'" class="o_almohit_whatsapp_qr mb-4">
                     <t t-if="state.qr">
-                        <p>On the new phone open WhatsApp → Linked devices → Link a device, then scan this code.</p>
+                        <p>On the phone open WhatsApp → Linked devices → Link a device, then scan this code.</p>
                         <img t-att-src="qrSrc" alt="WhatsApp QR" width="260" height="260"/>
                         <p class="text-muted mt-2 mb-0">This screen updates automatically after a successful scan.</p>
                     </t>
+                    <t t-elif="state.verification_failed">
+                        <p class="mb-0">Could not verify the session. Existing session data was kept — try again shortly.</p>
+                    </t>
+                    <t t-elif="state.phase === 'waiting_qr' or state.phase === 'connecting'">
+                        <p class="mb-0">Preparing a QR code…</p>
+                    </t>
                     <t t-else="">
-                        <p class="mb-0">Preparing a new QR code...</p>
+                        <p class="mb-0">No active session. Use Change account to start linking, or wait while the service restores a saved session.</p>
                     </t>
                 </div>
 
+                <div t-if="state.last_verified_at" class="text-muted small mb-3">
+                    Last verified: <t t-esc="state.last_verified_at"/>
+                </div>
+
                 <button
+                    t-if="state.show_change_account and state.can_manage"
                     type="button"
                     class="btn btn-primary"
                     t-on-click="confirmChangeAccount"

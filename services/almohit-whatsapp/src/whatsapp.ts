@@ -1,9 +1,16 @@
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { create, type Whatsapp } from "@wppconnect-team/wppconnect";
 import { config } from "./config.js";
 import { normalizeSendPhone } from "./phone.js";
+import {
+  type ConnectionPhase,
+  isDisconnectedStatus,
+  isReadyStatus,
+  isWaitingQrStatus,
+  phaseFromStatus,
+} from "./sessionStatus.js";
 
 type WhatsAppClient = Whatsapp & {
   isConnected?: () => Promise<boolean>;
@@ -16,24 +23,19 @@ type WhatsAppClient = Whatsapp & {
   close?: () => Promise<unknown>;
 };
 
-const CONNECTED_STATUSES = new Set([
-  "islogged",
-  "qrreadsuccess",
-  "inchat",
-  "chatsavailable",
-  "successchat",
-  "main",
-  "syncing",
-  "connected",
-  "open",
-]);
-
 let client: WhatsAppClient | null = null;
 let sessionStatus = "starting";
+let phase: ConnectionPhase = "unknown";
+/** True only after a successful client.isConnected() verification. */
 let connected = false;
+let verificationFailed = false;
+let lastVerifiedAt: string | null = null;
 let starting: Promise<void> | null = null;
+let unlinking: Promise<{ whatsapp: ReturnType<typeof getSession>; qr: string | null }> | null =
+  null;
 let generation = 0;
 let lastQr: string | null = null;
+let lastQrIssuedAt: string | null = null;
 let lastPhone = "";
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let qrDropTimer: ReturnType<typeof setTimeout> | null = null;
@@ -46,56 +48,57 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isConnectedStatus(status: string): boolean {
-  const compact = String(status || "").toLowerCase().replace(/[^a-z]/g, "");
-  if (CONNECTED_STATUSES.has(compact)) return true;
-  return ["main", "syncing", "connected", "inchat"].some((name) => compact.includes(name));
-}
-function isDisconnectedStatus(status: string): boolean {
-  const compact = String(status || "")
-    .toLowerCase()
-    .replace(/[^a-z]/g, "");
-
-  return [
-    "qr",
-    "notlogged",
-    "unpaired",
-    "unpairedidle",
-    "disconnected",
-    "disconnectedmobile",
-    "browserclose",
-    "stopped",
-    "error",
-    "waitingqr",
-  ].some((name) => compact.includes(name));
-}
-
-function markStatus(status: string, { force = false } = {}) {
-  const explicitDisconnected = isDisconnectedStatus(status);
-
-  const nextConnected = explicitDisconnected
-    ? false
-    : isConnectedStatus(status);
-
-  if (connected && !nextConnected && !force && !explicitDisconnected) {
-    return;
-  }
-
-  sessionStatus = status;
-  connected = nextConnected;
-
-  if (connected) {
+function applyPhase(status: string, extras: {
+  connected?: boolean;
+  verificationFailed?: boolean;
+  phone?: string;
+  clearQr?: boolean;
+  keepPhone?: boolean;
+} = {}) {
+  sessionStatus = status || sessionStatus || "unknown";
+  if (extras.connected !== undefined) connected = extras.connected;
+  if (extras.verificationFailed !== undefined) verificationFailed = extras.verificationFailed;
+  if (extras.phone !== undefined) lastPhone = extras.phone;
+  if (extras.keepPhone === false) lastPhone = "";
+  if (extras.clearQr) {
     lastQr = null;
-
-    if (qrDropTimer) {
-      clearTimeout(qrDropTimer);
-      qrDropTimer = null;
-    }
+    lastQrIssuedAt = null;
   }
+  phase = phaseFromStatus(sessionStatus, {
+    hasQr: Boolean(lastQr),
+    clientConnected: connected ? true : verificationFailed ? null : false,
+  });
+  // Never report connected unless verified.
+  if (phase !== "connected") {
+    connected = false;
+  } else if (!connected) {
+    phase = verificationFailed ? "unknown" : isWaitingQrStatus(sessionStatus) ? "waiting_qr" : "connecting";
+  }
+}
 
-  console.log(
-    `[whatsapp] session=${config.session} status=${status} connected=${connected}`
-  );
+function markUnverified(status: string, opts: { failed?: boolean; forcePhase?: ConnectionPhase } = {}) {
+  connected = false;
+  verificationFailed = opts.failed !== false;
+  sessionStatus = status || sessionStatus;
+  phase = opts.forcePhase || phaseFromStatus(sessionStatus, {
+    hasQr: Boolean(lastQr),
+    clientConnected: null,
+  });
+  if (phase === "connected") phase = "unknown";
+}
+
+function markVerified(statusHint?: string) {
+  connected = true;
+  verificationFailed = false;
+  lastVerifiedAt = new Date().toISOString();
+  sessionStatus = statusHint || sessionStatus || "isLogged";
+  lastQr = null;
+  lastQrIssuedAt = null;
+  if (qrDropTimer) {
+    clearTimeout(qrDropTimer);
+    qrDropTimer = null;
+  }
+  phase = "connected";
 }
 
 function stripQr(value: string): string {
@@ -157,42 +160,46 @@ async function capturePhone() {
   }
 }
 
+/**
+ * Fresh connection check. On failure: mark unverified — do NOT clear session files or force QR.
+ */
 async function refreshConnection(): Promise<boolean> {
   const current = client;
-  if (!current) return false;
+  if (!current) {
+    markUnverified(sessionStatus || "disconnected", { failed: false, forcePhase: "disconnected" });
+    return false;
+  }
 
   try {
-    const state = current.getConnectionState
-      ? await current.getConnectionState()
-      : "";
-
+    const state = current.getConnectionState ? await current.getConnectionState() : "";
     const display = displayFromState(state);
 
-    if (display) {
-      if (isDisconnectedStatus(display)) {
-        markStatus(display, { force: true });
-        return false;
-      }
-
-      if (isConnectedStatus(display)) {
-        markStatus(display || "inChat");
-        await capturePhone();
-        return true;
-      }
+    if (display && isDisconnectedStatus(display)) {
+      applyPhase(display, { connected: false, verificationFailed: false });
+      return false;
     }
 
-    const isConn = current.isConnected
-      ? await current.isConnected()
-      : false;
-
+    const isConn = current.isConnected ? await current.isConnected() : false;
     if (isConn) {
-      markStatus("inChat");
       await capturePhone();
+      markVerified(display && isReadyStatus(display) ? display : "inChat");
       return true;
     }
 
+    // Client present but not connected — waiting for QR / pairing.
+    if (display) {
+      applyPhase(display, { connected: false, verificationFailed: false });
+    } else if (lastQr) {
+      applyPhase("notLogged", { connected: false, verificationFailed: false });
+    } else {
+      applyPhase(sessionStatus || "disconnected", { connected: false, verificationFailed: false });
+    }
     return false;
-  } catch {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Keep phone/session data; do not request a new QR automatically.
+    markUnverified(sessionStatus || "unknown", { failed: true });
+    console.warn("[whatsapp] connection check failed:", message.slice(0, 120));
     return false;
   }
 }
@@ -218,14 +225,21 @@ function startPolling() {
 function handleInterfaceState(state: unknown) {
   const display = displayFromState(state).toUpperCase();
   if (!display) return;
-  if (["MAIN", "SYNCING", "CONVERSATION", "CHAT", "CONNECTED"].some((name) => display.includes(name))) {
-    markStatus(display.includes("SYNC") ? "SYNCING" : "inChat");
-    void capturePhone();
+  if (["MAIN", "CONVERSATION", "CHAT", "CONNECTED"].some((name) => display.includes(name))) {
+    // Status hint only — verification still required via refreshConnection.
+    sessionStatus = "inChat";
+    phase = "connecting";
+    void refreshConnection();
+    return;
+  }
+  if (display.includes("SYNC")) {
+    sessionStatus = "SYNCING";
+    phase = "connecting";
     return;
   }
   if (!display.includes("QR")) return;
   if (!connected) {
-    markStatus("notLogged", { force: true });
+    applyPhase("notLogged", { connected: false, verificationFailed: false });
     return;
   }
   if (qrDropTimer) return;
@@ -233,7 +247,9 @@ function handleInterfaceState(state: unknown) {
     qrDropTimer = null;
     void (async () => {
       const stillConnected = await refreshConnection();
-      if (!stillConnected) markStatus("notLogged", { force: true });
+      if (!stillConnected && !verificationFailed) {
+        applyPhase("notLogged", { connected: false, verificationFailed: false });
+      }
     })();
   }, 8000);
 }
@@ -253,16 +269,19 @@ async function attachClientListeners(created: WhatsAppClient, gen: number) {
     if (created.onStateChange) {
       await created.onStateChange((state) => {
         if (gen !== generation) return;
-
         const display = displayFromState(state);
-
-        if (display) {
-          markStatus(display);
+        if (!display) return;
+        if (isDisconnectedStatus(display)) {
+          applyPhase(display, { connected: false, verificationFailed: false });
+          return;
         }
-
-        if (connected) {
-          void capturePhone();
+        if (isReadyStatus(display)) {
+          sessionStatus = display;
+          phase = "connecting";
+          void refreshConnection();
+          return;
         }
+        applyPhase(display, { connected: false, verificationFailed: false });
       });
     }
   } catch {
@@ -286,15 +305,52 @@ function clearSessionData() {
     try {
       fs.rmSync(full, { recursive: true, force: true });
     } catch (error) {
-      console.warn("[whatsapp] could not clear %s", full, error);
+      console.warn("[whatsapp] could not clear session dir");
     }
     fs.mkdirSync(full, { recursive: true });
   }
 }
 
+/**
+ * Kill only Chromium processes tied to this service's chrome-profile.
+ * Never broad `pkill -f chromium`.
+ */
 function killOrphanChrome(): Promise<void> {
   return new Promise((resolve) => {
-    execFile("sh", ["-c", "pkill -f chromium || true"], () => resolve());
+    const profile = dataPath("chrome-profile").replace(/\\/g, "/");
+    try {
+      const listed = spawnSync("ps", ["-eo", "pid=,args="], {
+        encoding: "utf8",
+        timeout: 5000,
+      });
+      if (listed.status === 0 && listed.stdout) {
+        for (const line of listed.stdout.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (!/chrom(e|ium)/i.test(trimmed)) continue;
+          // Match only this service profile path — never all chrome-profile processes.
+          if (!trimmed.includes(profile)) continue;
+          const pid = Number.parseInt(trimmed.split(/\s+/)[0] || "", 10);
+          if (!Number.isFinite(pid) || pid <= 1) continue;
+          try {
+            process.kill(pid, "SIGTERM");
+          } catch {
+            /* ignore */
+          }
+        }
+        resolve();
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    // Last resort on Linux containers: only match our user-data-dir path.
+    const escaped = profile.replace(/'/g, "");
+    execFile(
+      "sh",
+      ["-c", `pkill -f 'user-data-dir=${escaped}' || pkill -f '${escaped}' || true`],
+      () => resolve(),
+    );
   });
 }
 
@@ -302,9 +358,12 @@ export function getStatus() {
   return {
     connected,
     status: sessionStatus,
+    phase,
     session: config.session,
     enabled: config.enabled,
-    qr_pending: Boolean(!connected && !lastQr),
+    verification_failed: verificationFailed,
+    last_verified_at: lastVerifiedAt,
+    qr_pending: Boolean(!connected && !lastQr && !verificationFailed),
   };
 }
 
@@ -312,10 +371,14 @@ export function getSession() {
   return {
     connected,
     status: sessionStatus,
+    phase,
     session: config.session,
     enabled: config.enabled,
     phone: lastPhone,
-    qr_pending: Boolean(!connected && !lastQr),
+    verification_failed: verificationFailed,
+    last_verified_at: lastVerifiedAt,
+    qr_issued_at: connected ? null : lastQrIssuedAt,
+    qr_pending: Boolean(!connected && !lastQr && !verificationFailed),
   };
 }
 
@@ -330,6 +393,7 @@ export async function startWhatsApp(): Promise<void> {
     fs.mkdirSync(dataPath("tokens"), { recursive: true });
     fs.mkdirSync(dataPath("chrome-profile"), { recursive: true });
     unlockChromeProfile();
+    phase = "connecting";
     const created = (await create({
       session: config.session,
       folderNameToken: dataPath("tokens"),
@@ -355,19 +419,22 @@ export async function startWhatsApp(): Promise<void> {
       catchQR: (base64) => {
         if (gen !== generation) return;
         if (connected) return;
-
+        // Never log QR payload.
         lastQr = stripQr(base64 || "") || lastQr;
-        markStatus("notLogged", { force: true });
+        lastQrIssuedAt = new Date().toISOString();
+        applyPhase("notLogged", { connected: false, verificationFailed: false });
       },
 
       statusFind: (status) => {
         if (gen !== generation) return;
-
-        markStatus(String(status));
-
-        if (connected) {
-          void capturePhone();
+        const raw = String(status || "unknown");
+        if (isReadyStatus(raw)) {
+          sessionStatus = raw;
+          phase = "connecting";
+          void refreshConnection();
+          return;
         }
+        applyPhase(raw, { connected: false, verificationFailed: false });
       },
     })) as WhatsAppClient;
     if (gen !== generation) {
@@ -378,18 +445,22 @@ export async function startWhatsApp(): Promise<void> {
     await attachClientListeners(created, gen);
     startPolling();
     await refreshConnection();
-    if (sessionStatus === "starting") markStatus("browserReady");
-    if (connected) await capturePhone();
+    if (sessionStatus === "starting") {
+      applyPhase("browserReady", { connected: false, verificationFailed: false });
+    }
   })();
   try {
     await starting;
   } catch (error) {
     if (gen === generation) {
       starting = null;
-      connected = false;
-      markStatus("error", { force: true });
+      markUnverified("error", { failed: true, forcePhase: "session_error" });
     }
     throw error;
+  } finally {
+    if (gen === generation) {
+      starting = null;
+    }
   }
 }
 
@@ -417,9 +488,12 @@ async function stopWhatsApp() {
   let current = client;
   client = null;
   connected = false;
+  verificationFailed = false;
+  lastVerifiedAt = null;
   lastQr = null;
+  lastQrIssuedAt = null;
   lastPhone = "";
-  markStatus("stopped", { force: true });
+  applyPhase("stopped", { connected: false, verificationFailed: false, keepPhone: false, clearQr: true });
   if (!current && pending) {
     current = await waitForClient(8000);
     client = null;
@@ -431,21 +505,29 @@ async function stopWhatsApp() {
 }
 
 export async function unlinkWhatsApp() {
-  await stopWhatsApp();
-  clearSessionData();
-  unlockChromeProfile();
-  markStatus("waiting_qr", { force: true });
-  startWhatsApp().catch((error) => {
-    console.error("[whatsapp] failed to restart after unlink", error);
-  });
-  const deadline = Date.now() + 15000;
-  while (!lastQr && !connected && Date.now() < deadline) {
-    await sleep(250);
+  if (unlinking) return unlinking;
+  unlinking = (async () => {
+    await stopWhatsApp();
+    clearSessionData();
+    unlockChromeProfile();
+    applyPhase("waiting_qr", { connected: false, verificationFailed: false, keepPhone: false, clearQr: true });
+    startWhatsApp().catch(() => {
+      console.error("[whatsapp] failed to restart after unlink");
+    });
+    const deadline = Date.now() + 15000;
+    while (!lastQr && !connected && Date.now() < deadline) {
+      await sleep(250);
+    }
+    return {
+      whatsapp: getSession(),
+      qr: getQr(),
+    };
+  })();
+  try {
+    return await unlinking;
+  } finally {
+    unlinking = null;
   }
-  return {
-    whatsapp: getSession(),
-    qr: getQr(),
-  };
 }
 
 function resultId(result: unknown): string {
@@ -468,9 +550,16 @@ export async function sendText(phone: string, message: string): Promise<{ messag
     (error as Error & { code?: string }).code = "WHATSAPP_DISABLED";
     throw error;
   }
-  if (!connected || !client) {
-    const error = new Error("WhatsApp is not connected.");
-    (error as Error & { code?: string }).code = "WHATSAPP_NOT_CONNECTED";
+  const ready = await refreshConnection();
+  if (!ready || !connected || !client) {
+    const error = new Error(
+      verificationFailed
+        ? "WhatsApp session could not be verified."
+        : "WhatsApp is not connected.",
+    );
+    (error as Error & { code?: string }).code = verificationFailed
+      ? "WHATSAPP_UNVERIFIED"
+      : "WHATSAPP_NOT_CONNECTED";
     throw error;
   }
   const normalized = normalizeSendPhone(phone);
@@ -479,6 +568,7 @@ export async function sendText(phone: string, message: string): Promise<{ messag
     (error as Error & { code?: string }).code = "INVALID_PHONE";
     throw error;
   }
+  // Never log message body or tokens.
   const result = await client.sendText(normalized, message);
   return { messageId: resultId(result) || `${Date.now()}` };
 }

@@ -40,14 +40,14 @@
                         </setting>
                         <setting
                             id="almohit_whatsapp_account_setting"
-                            string="Saved number"
-                            help="Last saved business WhatsApp number. Live connection and QR are on WhatsApp Account.">
+                            string="Desired number"
+                            help="Number you want to link. Saving settings does not disconnect the live session.">
                             <field name="almohit_whatsapp_account_phone" placeholder="+9665xxxxxxxx" widget="phone"/>
                         </setting>
                         <setting
                             id="almohit_whatsapp_live_setting"
                             string="Live connection"
-                            help="Open the live screen to scan a QR only when WhatsApp is disconnected.">
+                            help="Open the live screen to verify connection, change account, and scan QR.">
                             <button
                                 name="action_open_whatsapp_account"
                                 type="object"

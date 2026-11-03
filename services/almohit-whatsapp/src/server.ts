@@ -56,7 +56,13 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     }
     try {
       const session = await unlinkWhatsApp();
-      json(res, 200, { ok: true, ...session });
+      // Unlink success is not re-link success.
+      json(res, 200, {
+        ok: true,
+        unlinked: true,
+        connected: false,
+        ...session,
+      });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : "Unlink failed.";
       fail(res, 500, "UNLINK_FAILED", messageText);
@@ -87,7 +93,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     } catch (error) {
       const code = (error as { code?: string }).code || "SEND_FAILED";
       const messageText = error instanceof Error ? error.message : "Send failed.";
-      const status = code === "WHATSAPP_NOT_CONNECTED" || code === "WHATSAPP_DISABLED" ? 503 : 400;
+      const status =
+        code === "WHATSAPP_NOT_CONNECTED" ||
+        code === "WHATSAPP_UNVERIFIED" ||
+        code === "WHATSAPP_DISABLED"
+          ? 503
+          : 400;
       fail(res, status, code, messageText);
     }
     return;
@@ -98,7 +109,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 export function listen() {
   const server = createServer((req, res) => {
     handle(req, res).catch((error) => {
-      console.error("[whatsapp] request failed", error);
+      console.error("[whatsapp] request failed");
       if (!res.headersSent) fail(res, 500, "INTERNAL_ERROR", "Internal error.");
     });
   });

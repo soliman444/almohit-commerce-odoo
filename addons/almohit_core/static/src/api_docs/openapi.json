@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Almohit App API",
-    "version": "17.0.1.75.0",
-    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.75.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Merchant (external customer who buys FROM Almohit): cart, checkout, customer orders, invoices, payments, payment transactions, addresses. Buyer (Almohit procurement who buys FROM farmers/suppliers INTO inventory): `/almohit/api/buyer/*` only — suppliers, procurement products, purchase orders, incoming receipts. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). Warehouse Manager: `/almohit/api/warehouse/*` (approved + warehouse assignment + permission flags; see warehouse_api.md). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Buyer is denied customer commerce. Merchant/marketer/distributor are denied buyer procurement. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Buyer procurement.** Native `res.partner` vendors (`supplier_rank > 0`), `product.template`/`product.product`, `purchase.order`, and incoming `stock.picking`. Confirm uses `purchase.order.button_confirm()`. Receive uses `stock.picking.button_validate()` after setting done quantities. Portal Buyer + sudo after `group_almohit_buyer`. Purchases are scoped to `purchase.order.user_id` of the current Buyer.\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand, buyer procurement product, buyer purchase images). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand/buyer product/purchase images: 2 MB. Shop image: 4 MB. Max 2000×2000. Purchase `images` max 12. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
+    "version": "17.0.1.76.0",
+    "description": "Customer and mobile API on Odoo (`almohit_core` 17.0.1.76.0).\n\n**Authentication.** The only method is the Odoo `session_id` cookie (`HttpOnly`, `Path=/`). `POST /almohit/api/auth/login` authenticates and sets `Set-Cookie: session_id=<final rotated session>`. JSON responses do not include `session_id`. There is no Bearer token and no JWT.\n\nMissing, invalid, expired, or logged-out session on protected `/almohit/api/` routes returns HTTP 401 JSON `AUTHENTICATION_REQUIRED` (not a 303 HTML redirect to `/web/login`). `/auth/me` and `/auth/logout` are public routes and return `UNAUTHENTICATED` when no session is present.\n\n**Roles.** Merchant (external customer who buys FROM Almohit): cart, checkout, customer orders, invoices, payments, payment transactions, addresses. Buyer (Almohit procurement who buys FROM farmers/suppliers INTO inventory): `/almohit/api/buyer/*` only — suppliers, procurement products, purchase orders, incoming receipts. Marketer: recruited-merchant APIs (approved marketer required). Distributor: delivery APIs (approved distributor required). Warehouse Manager: `/almohit/api/warehouse/*` (approved + warehouse assignment + permission flags; see warehouse_api.md). All four roles: own trade application. Public: catalog, currencies, health, register, login.\n\nWrong role on a protected route returns 403 `ACCESS_DENIED`. Buyer is denied customer commerce. Merchant/marketer/distributor are denied buyer procurement. Cart, checkout, marketer, and delivery routes that require wholesale approval return 403 `WHOLESALE_APPROVAL_REQUIRED` when the partner is not approved. Price is omitted from catalog unless `partner.almohit_trade_status == approved` (not role-based).\n\n**Buyer procurement.** Native `res.partner` vendors (`supplier_rank > 0`), `product.template`/`product.product`, `purchase.order`, and incoming `stock.picking`. Confirm uses `purchase.order.button_confirm()`. Receive uses `stock.picking.button_validate()` after setting done quantities. Portal Buyer + sudo after `group_almohit_buyer`. Purchases are scoped to `purchase.order.user_id` of the current Buyer.\n\n**Checkout.** `POST /checkout` confirms the storefront `sale.order` (`action_confirm`). It does not create an invoice. Confirmed orders typically have `invoice_status` of `to invoice` and `invoices: []` until staff invoicing.\n\n**Ownership.** Another customer's order, invoice, payment, transaction, address, or delivery is returned as the matching `*_NOT_FOUND` 404. Foreign record existence is not exposed.\n\n**Envelope.** Success `{ ok: true, data }`. Error `{ ok: false, error: { code, message } }` (extra fields may be flattened onto `error`). Paginated lists put `{ items, pagination }` inside `data`.\n\n**Catalog list.** `GET /almohit/api/products` is paginated. `data` is `{ items, pagination }`, not a raw array. Default `page=1`, `page_size=20` (max 100). `GET /almohit/api/products/{id}`, `GET /almohit/api/categories`, and `GET /almohit/api/brands` are not paginated (`categories` and `brands` remain raw arrays in `data`).\n\n**JSON image uploads** (trade shop image, marketer shop image, admin product/gallery/variant/brand, buyer procurement product, buyer purchase images). MIME allowlist: `image/jpeg`, `image/png`, `image/webp`. GIF, SVG, and PDF are rejected. Limits use decoded bytes, not Base64 string length. Product/gallery/variant/brand/buyer product/purchase images: 2 MB. Shop image: 4 MB. Max 2000×2000. Purchase `images` max 12. Errors: `INVALID_IMAGE_TYPE`, `INVALID_IMAGE_DATA`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSIONS_TOO_LARGE` (HTTP 400). Gallery count over 12 still returns `INVALID_IMAGE`."
   },
   "servers": [
     {
@@ -2012,30 +2012,45 @@
           "dest_warehouse_id",
           "lines"
         ],
+        "additionalProperties": false,
         "properties": {
           "source_warehouse_id": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1
           },
           "dest_warehouse_id": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1
           },
           "note": {
             "type": "string"
           },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Optional. Unique per company; retries return the same transfer."
+          },
           "lines": {
             "type": "array",
+            "minItems": 1,
             "items": {
               "type": "object",
               "required": [
                 "product_id",
                 "quantity"
               ],
+              "additionalProperties": false,
               "properties": {
                 "product_id": {
-                  "type": "integer"
+                  "type": "integer",
+                  "minimum": 1
                 },
                 "quantity": {
-                  "type": "number"
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "uom_id": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             }
@@ -4818,33 +4833,33 @@
         "tags": [
           "Warehouse"
         ],
-        "summary": "Create inter-warehouse transfer",
+        "summary": "Create transfer and dispatch to transit",
         "security": [
           {
             "sessionCookie": []
           }
         ],
         "responses": {
-          "200": {
-            "description": "ok:true"
-          },
           "201": {
-            "description": "created"
+            "description": "created and dispatched (state=dispatched)"
+          },
+          "200": {
+            "description": "idempotent replay of existing transfer"
           },
           "400": {
-            "description": "validation"
+            "description": "INVALID_FIELDS | WAREHOUSE_CONFIG"
+          },
+          "403": {
+            "description": "WAREHOUSE_NOT_ALLOWED | WAREHOUSE_PERMISSION_DENIED"
           },
           "404": {
-            "description": "not found"
+            "description": "PRODUCT_NOT_FOUND | WAREHOUSE_NOT_FOUND"
           },
           "409": {
-            "description": "IMPORT_DUPLICATE | RECEIPT_ALREADY_DONE | ISSUE_ALREADY_DISPATCHED | TRANSFER_NEEDS_RECONCILE | ..."
+            "description": "INSUFFICIENT_STOCK | TRANSFER_BUSY | TRANSFER_DUPLICATE | TRANSFER_DISPATCH_FAILED"
           },
           "401": {
             "description": "AUTHENTICATION_REQUIRED"
-          },
-          "403": {
-            "description": "ACCESS_DENIED | WAREHOUSE_APPROVAL_REQUIRED | WAREHOUSE_ASSIGNMENT_REQUIRED | WAREHOUSE_PERMISSION_DENIED | CROSS_COMPANY_DENIED | RECEIPT_BUYER_ONLY | RECEIPT_HANDED_TO_WAREHOUSE"
           }
         },
         "requestBody": {
@@ -4857,6 +4872,7 @@
               "example": {
                 "source_warehouse_id": 1,
                 "dest_warehouse_id": 2,
+                "idempotency_key": "wh-tr-2026-001",
                 "lines": [
                   {
                     "product_id": 158,
@@ -4866,7 +4882,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Creates an inter-warehouse transfer and immediately moves stock from source lot_stock to Transit in one atomic request. Returns state dispatched (not complete). Destination receive remains POST /transfers/{id}/receive. Optional idempotency_key returns the existing transfer on retry. Source and destination warehouses must both be assigned. No location_id / location_dest_id."
       }
     },
     "/almohit/api/warehouse/transfers/{transfer_id}": {
@@ -4901,52 +4918,6 @@
             "description": "ACCESS_DENIED | WAREHOUSE_APPROVAL_REQUIRED | WAREHOUSE_ASSIGNMENT_REQUIRED | WAREHOUSE_PERMISSION_DENIED | CROSS_COMPANY_DENIED | RECEIPT_BUYER_ONLY | RECEIPT_HANDED_TO_WAREHOUSE"
           }
         }
-      }
-    },
-    "/almohit/api/warehouse/transfers/{transfer_id}/dispatch": {
-      "post": {
-        "tags": [
-          "Warehouse"
-        ],
-        "summary": "Dispatch to transit",
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "ok:true"
-          },
-          "201": {
-            "description": "created"
-          },
-          "400": {
-            "description": "validation"
-          },
-          "404": {
-            "description": "not found"
-          },
-          "409": {
-            "description": "IMPORT_DUPLICATE | RECEIPT_ALREADY_DONE | ISSUE_ALREADY_DISPATCHED | TRANSFER_NEEDS_RECONCILE | ..."
-          },
-          "401": {
-            "description": "AUTHENTICATION_REQUIRED"
-          },
-          "403": {
-            "description": "ACCESS_DENIED | WAREHOUSE_APPROVAL_REQUIRED | WAREHOUSE_ASSIGNMENT_REQUIRED | WAREHOUSE_PERMISSION_DENIED | CROSS_COMPANY_DENIED | RECEIPT_BUYER_ONLY | RECEIPT_HANDED_TO_WAREHOUSE"
-          }
-        },
-        "parameters": [
-          {
-            "name": "transfer_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ]
       }
     },
     "/almohit/api/warehouse/transfers/{transfer_id}/receive": {

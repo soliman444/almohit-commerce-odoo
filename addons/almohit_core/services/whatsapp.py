@@ -58,9 +58,41 @@ FINAL_EVENTS = (
 
 
 ICP_ENABLED = "almohit.whatsapp.enabled"
+# Desired / configured business number (admin intent). Never proof of live link.
 ICP_ACCOUNT_PHONE = "almohit.whatsapp.account_phone"
 ICP_SERVICE_URL = "almohit.whatsapp.service_url"
 ICP_SERVICE_TOKEN = "almohit.whatsapp.service_token"
+# Informational only — last verified connected phone. Not proof of current link.
+ICP_LAST_CONNECTED_PHONE = "almohit.whatsapp.last_connected_phone"
+
+# Canonical connection phases for the Odoo account UI.
+PHASE_CONNECTED = "connected"
+PHASE_CONNECTING = "connecting"
+PHASE_WAITING_QR = "waiting_qr"
+PHASE_DISCONNECTED = "disconnected"
+PHASE_SERVICE_UNREACHABLE = "service_unreachable"
+PHASE_SESSION_ERROR = "session_error"
+PHASE_UNKNOWN = "unknown"
+PHASE_NOT_CONFIGURED = "not_configured"
+
+_READY_STATUSES = frozenset({
+    "islogged",
+    "inchat",
+    "chatsavailable",
+    "successchat",
+    "main",
+    "connected",
+    "open",
+})
+_CONNECTING_STATUSES = frozenset({
+    "opening",
+    "pairing",
+    "syncing",
+    "loadingscreen",
+    "qrreadsuccess",
+    "browserready",
+    "starting",
+})
 
 
 def _env_flag(name):
@@ -91,11 +123,6 @@ def whatsapp_config(env=None):
         "token": token,
         "account_phone": account_phone,
     }
-
-
-def whatsapp_service_status(url, timeout=3):
-    """Read-only health of the send service. Never required for business success."""
-    return whatsapp_session_info(url=url, timeout=timeout)["status_text"]
 
 
 def _http_json(method, url, token="", timeout=4, payload=None):
@@ -293,16 +320,71 @@ def _normalize_qr(raw):
     return compact or None
 
 
-def qr_img_html(qr):
-    if not qr:
-        return False
-    return (
-        '<div class="mt-2">'
-        '<img src="data:image/png;base64,%s" alt="WhatsApp QR" width="260" height="260" '
-        'style="width:260px;height:260px;background:#fff;padding:8px;'
-        'border:1px solid #ddd;border-radius:8px"/>'
-        "</div>"
-    ) % qr
+_PHASE_LABELS = {
+    "connected": "Connected",
+    "connecting": "Connecting",
+    "waiting_qr": "Waiting for QR",
+    "disconnected": "Disconnected",
+    "service_unreachable": "Service unreachable",
+    "session_error": "Session error",
+    "unknown": "Could not verify",
+}
+
+
+def _digits_only(phone):
+    return re.sub(r"\D", "", str(phone or ""))
+
+
+def phones_match(a, b):
+    """Compare international numbers by digits only (no country guessing)."""
+    da = _digits_only(a)
+    db = _digits_only(b)
+    return bool(da and db and da == db)
+
+
+def normalize_account_phone(raw):
+    """Desired WhatsApp account number: require explicit international form."""
+    if not raw:
+        return None
+    compact = re.sub(r"[\s\-\(\)]", "", str(raw).strip())
+    if not compact:
+        return None
+    if compact.startswith("00"):
+        compact = "+" + compact[2:]
+    if not compact.startswith("+"):
+        return None
+    digits = re.sub(r"\D", "", compact)
+    if 8 <= len(digits) <= 15:
+        return "+" + digits
+    return None
+
+
+def _map_connection_phase(session, connected, verification_failed, has_qr, fallback_phase=None):
+    raw_phase = str(session.get("phase") or "").strip().lower()
+    if raw_phase in _PHASE_LABELS:
+        phase = raw_phase
+    else:
+        status = _compact_status(session.get("status"))
+        if connected:
+            phase = "connected"
+        elif verification_failed:
+            phase = "unknown"
+        elif has_qr or status in ("notlogged", "qr", "waitingqr", "waiting_qr"):
+            phase = "waiting_qr"
+        elif status in ("opening", "pairing", "syncing", "loadingscreen", "qrreadsuccess", "browserready"):
+            phase = "connecting"
+        elif status in ("disconnected", "logout", "stopped", "browserclose", "unpaired"):
+            phase = "disconnected"
+        elif status in ("error", "failed", "sessionerror"):
+            phase = "session_error"
+        else:
+            phase = fallback_phase or "unknown"
+    # Connected flag must never outrank a failed verification.
+    if verification_failed and phase == "connected":
+        phase = "unknown"
+    if phase != "connected":
+        connected = False
+    return phase, connected
 
 
 def _session_from_body(body, fallback="Service unreachable"):
@@ -310,38 +392,62 @@ def _session_from_body(body, fallback="Service unreachable"):
         body = {}
     error = body.get("error") if isinstance(body, dict) else None
     error_code = error.get("code") if isinstance(error, dict) else None
+    empty_phase = _FALLBACK_STATUS.get(fallback, "unreachable")
+    if empty_phase == "unreachable":
+        mapped_phase = "service_unreachable"
+    elif empty_phase == "unauthorized":
+        mapped_phase = "service_unreachable"
+    elif empty_phase == "notconfigured":
+        mapped_phase = "service_unreachable"
+    else:
+        mapped_phase = "session_error"
     empty = {
         "ok": False,
         "connected": False,
         "status_text": fallback,
         "phone": "",
         "qr": None,
-        "raw_status": error_code or _FALLBACK_STATUS.get(fallback, "unreachable"),
+        "raw_status": error_code or empty_phase,
         "error_code": error_code,
+        "phase": mapped_phase,
+        "verification_failed": mapped_phase in ("service_unreachable", "unknown", "session_error"),
+        "last_verified_at": None,
+        "service_reachable": mapped_phase != "service_unreachable",
     }
     if not isinstance(body, dict) or not body.get("ok"):
         if isinstance(error, dict) and error.get("message"):
             empty["status_text"] = error.get("message")
         return empty
     session = body.get("whatsapp") if isinstance(body.get("whatsapp"), dict) else {}
-    connected = bool(session.get("connected"))
+    verification_failed = bool(session.get("verification_failed"))
     status = session.get("status") or "unknown"
     name = session.get("session") or ""
     phone = (session.get("phone") or "").strip()
-    qr = None if connected else _normalize_qr(body.get("qr") or session.get("qr"))
-    if connected:
-        label = phone or name
-        status_text = "Connected%s" % ((" (%s)" % label) if label else "")
+    raw_connected = bool(session.get("connected")) and not verification_failed
+    qr = None if raw_connected else _normalize_qr(body.get("qr") or session.get("qr"))
+    phase, connected = _map_connection_phase(
+        session, raw_connected, verification_failed, bool(qr)
+    )
+    label = _PHASE_LABELS.get(phase, phase)
+    if phase == "connected":
+        detail = phone or name
+        status_text = "%s%s" % (label, (" (%s)" % detail) if detail else "")
+    elif verification_failed:
+        status_text = "Could not verify connection"
     else:
-        status_text = "Disconnected (%s)" % status
+        status_text = "%s (%s)" % (label, status)
     return {
         "ok": True,
         "connected": connected,
         "status_text": status_text,
-        "phone": phone,
-        "qr": qr,
+        "phone": phone if connected else "",
+        "qr": None if connected else qr,
         "raw_status": status,
         "error_code": None,
+        "phase": phase,
+        "verification_failed": verification_failed,
+        "last_verified_at": session.get("last_verified_at") or None,
+        "service_reachable": True,
     }
 
 
