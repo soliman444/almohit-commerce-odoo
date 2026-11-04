@@ -15,10 +15,12 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PORT=3000
 
 WORKDIR /app
-COPY package.json ./
+
+COPY package.json package-lock.json ./
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm install && npx tsc && npm prune --omit=dev
+
+RUN npm ci && npm run build && npm prune --omit=dev
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
