@@ -14,6 +14,7 @@ import {
   isWppInitError,
   phaseFromStatus,
 } from "./sessionStatus.js";
+import { browserQueue } from "./browserQueue.js";
 import {
   canClearSessionData,
   canStartNewSession,
@@ -70,7 +71,6 @@ let lastQrIssuedAt: string | null = null;
 let lastPhone = "";
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let qrDropTimer: ReturnType<typeof setTimeout> | null = null;
-let refreshInFlight = false;
 /** Set after statusFind/interface signals that WA-JS injection is expected. */
 let wppProbeAllowed = false;
 let lastInitErrorKey = "";
@@ -215,27 +215,122 @@ function shouldSkipWppProbe(): boolean {
 }
 
 /**
- * Fresh connection check. On failure: mark unverified — do NOT clear session files or force QR.
+ * Internal connection probe — must only run while holding browserQueue (or re-entered).
  * Does not call getConnectionState while waiting for QR (WPP not injected yet in 2.3.6).
  */
-async function refreshConnection(): Promise<boolean> {
-  if (refreshInFlight) return connected;
-  refreshInFlight = true;
+async function refreshConnectionImpl(): Promise<boolean> {
+  const current = client;
+  if (!current) {
+    markUnverified(sessionStatus || "disconnected", { failed: false, forcePhase: "disconnected" });
+    return false;
+  }
+
+  // During QR / pre-inject: rely on statusFind + catchQR only (official WPPConnect path).
+  if (shouldSkipWppProbe()) {
+    const decision = evaluateConnectionCheck({
+      display: sessionStatus || "notLogged",
+      isConnected: false,
+      hasQr: Boolean(lastQr),
+      probeSkipped: true,
+    });
+    applyPhase(decision.status, {
+      connected: false,
+      verificationFailed: false,
+    });
+    phase = decision.phase;
+    connected = false;
+    return false;
+  }
+
   try {
-    const current = client;
-    if (!current) {
-      markUnverified(sessionStatus || "disconnected", { failed: false, forcePhase: "disconnected" });
-      return false;
+    let mainReady = false;
+    let display = sessionStatus || "";
+    let isConn = false;
+    let initError = false;
+
+    if (current.isMainReady) {
+      try {
+        mainReady = Boolean(await current.isMainReady());
+        if (mainReady) wppProbeAllowed = true;
+      } catch (err) {
+        if (isWppInitError(err)) {
+          initError = true;
+          logInitErrorOnce(err instanceof Error ? err.message : String(err));
+        } else {
+          throw err;
+        }
+      }
     }
 
-    // During QR / pre-inject: rely on statusFind + catchQR only (official WPPConnect path).
-    if (shouldSkipWppProbe()) {
-      const decision = evaluateConnectionCheck({
-        display: sessionStatus || "notLogged",
-        isConnected: false,
-        hasQr: Boolean(lastQr),
-        probeSkipped: true,
-      });
+    // getConnectionState reads WPP.whatsapp.Socket.state — only after WPP is expected.
+    if (
+      !initError &&
+      current.getConnectionState &&
+      (wppProbeAllowed || mainReady || isReadyStatus(sessionStatus) || isConnectingStatus(sessionStatus))
+    ) {
+      try {
+        const state = await current.getConnectionState();
+        const fromState = displayFromState(state);
+        if (fromState) display = fromState;
+      } catch (err) {
+        if (isWppInitError(err)) {
+          initError = true;
+          logInitErrorOnce(err instanceof Error ? err.message : String(err));
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!initError && current.isConnected && (mainReady || isReadyStatus(display) || isReadyStatus(sessionStatus))) {
+      try {
+        isConn = Boolean(await current.isConnected());
+      } catch (err) {
+        if (isWppInitError(err)) {
+          initError = true;
+          logInitErrorOnce(err instanceof Error ? err.message : String(err));
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!display) display = sessionStatus || "";
+
+    const decision = evaluateConnectionCheck({
+      display,
+      isConnected: isConn,
+      hasQr: Boolean(lastQr),
+      mainReady,
+      initError,
+      checkFailed: initError,
+    });
+
+    if (decision.connected) {
+      await capturePhone();
+      markVerified(decision.status);
+      return true;
+    }
+
+    applyPhase(decision.status, {
+      connected: false,
+      verificationFailed: decision.verificationFailed,
+    });
+    phase = decision.phase;
+    connected = false;
+    return false;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const initError = isWppInitError(err);
+    const decision = evaluateConnectionCheck({
+      display: sessionStatus || "unknown",
+      isConnected: false,
+      hasQr: Boolean(lastQr),
+      checkFailed: true,
+      initError,
+    });
+    if (initError) {
+      logInitErrorOnce(message);
       applyPhase(decision.status, {
         connected: false,
         verificationFailed: false,
@@ -244,111 +339,18 @@ async function refreshConnection(): Promise<boolean> {
       connected = false;
       return false;
     }
-
-    try {
-      let mainReady = false;
-      let display = sessionStatus || "";
-      let isConn = false;
-      let initError = false;
-
-      if (current.isMainReady) {
-        try {
-          mainReady = Boolean(await current.isMainReady());
-          if (mainReady) wppProbeAllowed = true;
-        } catch (err) {
-          if (isWppInitError(err)) {
-            initError = true;
-            logInitErrorOnce(err instanceof Error ? err.message : String(err));
-          } else {
-            throw err;
-          }
-        }
-      }
-
-      // getConnectionState reads WPP.whatsapp.Socket.state — only after WPP is expected.
-      if (
-        !initError &&
-        current.getConnectionState &&
-        (wppProbeAllowed || mainReady || isReadyStatus(sessionStatus) || isConnectingStatus(sessionStatus))
-      ) {
-        try {
-          const state = await current.getConnectionState();
-          const fromState = displayFromState(state);
-          if (fromState) display = fromState;
-        } catch (err) {
-          if (isWppInitError(err)) {
-            initError = true;
-            logInitErrorOnce(err instanceof Error ? err.message : String(err));
-          } else {
-            throw err;
-          }
-        }
-      }
-
-      if (!initError && current.isConnected && (mainReady || isReadyStatus(display) || isReadyStatus(sessionStatus))) {
-        try {
-          isConn = Boolean(await current.isConnected());
-        } catch (err) {
-          if (isWppInitError(err)) {
-            initError = true;
-            logInitErrorOnce(err instanceof Error ? err.message : String(err));
-          } else {
-            throw err;
-          }
-        }
-      }
-
-      if (!display) display = sessionStatus || "";
-
-      const decision = evaluateConnectionCheck({
-        display,
-        isConnected: isConn,
-        hasQr: Boolean(lastQr),
-        mainReady,
-        initError,
-        checkFailed: initError,
-      });
-
-      if (decision.connected) {
-        await capturePhone();
-        markVerified(decision.status);
-        return true;
-      }
-
-      applyPhase(decision.status, {
-        connected: false,
-        verificationFailed: decision.verificationFailed,
-      });
-      phase = decision.phase;
-      connected = false;
-      return false;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const initError = isWppInitError(err);
-      const decision = evaluateConnectionCheck({
-        display: sessionStatus || "unknown",
-        isConnected: false,
-        hasQr: Boolean(lastQr),
-        checkFailed: true,
-        initError,
-      });
-      if (initError) {
-        logInitErrorOnce(message);
-        applyPhase(decision.status, {
-          connected: false,
-          verificationFailed: false,
-        });
-        phase = decision.phase;
-        connected = false;
-        return false;
-      }
-      markUnverified(decision.status, { failed: true, forcePhase: decision.phase });
-      console.warn("[whatsapp] connection check failed:", message.slice(0, 120));
-      return false;
-    }
-  } finally {
-    refreshInFlight = false;
+    markUnverified(decision.status, { failed: true, forcePhase: decision.phase });
+    console.warn("[whatsapp] connection check failed:", message.slice(0, 120));
+    return false;
   }
+}
+
+/**
+ * Public refresh: wait for the in-flight probe (never return a stale connected flag).
+ * Serialized on browserQueue; coalesced so concurrent callers share one probe.
+ */
+async function refreshConnection(): Promise<boolean> {
+  return browserQueue.runRefresh(() => refreshConnectionImpl());
 }
 
 function stopPolling() {
@@ -373,7 +375,10 @@ function startPolling() {
   stopPolling();
   const schedule = () => {
     pollTimer = setTimeout(() => {
-      void refreshConnection().finally(() => {
+      // Skip while send/refresh runs — do not pile CDP work behind sendText.
+      const polled = browserQueue.requestPollRefresh(() => refreshConnectionImpl());
+      const done = polled ? polled.then(() => undefined, () => undefined) : Promise.resolve();
+      void done.finally(() => {
         if (generation >= 0 && client) schedule();
       });
     }, pollIntervalMs()) as unknown as ReturnType<typeof setInterval>;
@@ -1104,83 +1109,100 @@ export async function sendText(phone: string, message: string): Promise<{ messag
     throw error;
   }
 
-  logSend("connection_check_started", cid, { phase, connected });
-  const checkStartedAt = Date.now();
-  let ready = false;
-  try {
-    ready = await refreshConnection();
-  } catch (err) {
-    logSend("connection_check_failed", cid, {
-      error_kind: exceptionKind(err),
+  // Serialize all CDP work: connection probe + sendText. Nested refresh uses impl (no deadlock).
+  const { result, queueWaitMs } = await browserQueue.runExclusive("send", async () => {
+    const acquiredWaitMs = Date.now() - startedAt;
+    logSend("browser_queue_acquired", cid, {
+      queue_wait_ms: acquiredWaitMs,
+      phase,
+    });
+
+    logSend("connection_check_started", cid, { phase, connected });
+    const checkStartedAt = Date.now();
+    let ready = false;
+    try {
+      ready = await refreshConnectionImpl();
+    } catch (err) {
+      logSend("connection_check_failed", cid, {
+        error_kind: exceptionKind(err),
+        duration_ms: Date.now() - checkStartedAt,
+        phase,
+        verification_failed: verificationFailed,
+      });
+      throw err;
+    }
+
+    if (!ready || !connected || !client) {
+      logSend("connection_check_failed", cid, {
+        error_kind: verificationFailed ? "WHATSAPP_UNVERIFIED" : "WHATSAPP_NOT_CONNECTED",
+        duration_ms: Date.now() - checkStartedAt,
+        phase,
+        connected,
+        has_client: Boolean(client),
+        verification_failed: verificationFailed,
+      });
+      const error = new Error(
+        verificationFailed
+          ? "WhatsApp session could not be verified."
+          : "WhatsApp is not connected.",
+      );
+      (error as Error & { code?: string }).code = verificationFailed
+        ? "WHATSAPP_UNVERIFIED"
+        : "WHATSAPP_NOT_CONNECTED";
+      throw error;
+    }
+
+    logSend("connection_check_succeeded", cid, {
       duration_ms: Date.now() - checkStartedAt,
       phase,
-      verification_failed: verificationFailed,
+      last_verified_at: lastVerifiedAt,
     });
-    throw err;
-  }
 
-  if (!ready || !connected || !client) {
-    logSend("connection_check_failed", cid, {
-      error_kind: verificationFailed ? "WHATSAPP_UNVERIFIED" : "WHATSAPP_NOT_CONNECTED",
-      duration_ms: Date.now() - checkStartedAt,
-      phase,
-      connected,
-      has_client: Boolean(client),
-      verification_failed: verificationFailed,
+    const normalized = normalizeSendPhone(phone);
+    if (!normalized) {
+      const error = new Error("Phone number is not a valid international number.");
+      (error as Error & { code?: string }).code = "INVALID_PHONE";
+      logSend("wpp_send_failed", cid, {
+        stage: "validate_phone",
+        error_kind: "INVALID_PHONE",
+        duration_ms: Date.now() - startedAt,
+      });
+      throw error;
+    }
+
+    // Never log message body, tokens, or full destination.
+    const active = client;
+    const wppStartedAt = Date.now();
+    logSend("wpp_send_started", cid, {
+      to_masked: maskDestination(normalized),
+      ms_since_request: wppStartedAt - startedAt,
+      queue_wait_ms: acquiredWaitMs,
     });
-    const error = new Error(
-      verificationFailed
-        ? "WhatsApp session could not be verified."
-        : "WhatsApp is not connected.",
-    );
-    (error as Error & { code?: string }).code = verificationFailed
-      ? "WHATSAPP_UNVERIFIED"
-      : "WHATSAPP_NOT_CONNECTED";
-    throw error;
-  }
-
-  logSend("connection_check_succeeded", cid, {
-    duration_ms: Date.now() - checkStartedAt,
-    phase,
-    last_verified_at: lastVerifiedAt,
+    try {
+      const sendResult = await active.sendText(normalized, message);
+      const messageId = resultId(sendResult) || `${Date.now()}`;
+      logSend("wpp_send_succeeded", cid, {
+        result_ok: true,
+        duration_ms: Date.now() - wppStartedAt,
+        total_duration_ms: Date.now() - startedAt,
+        queue_wait_ms: acquiredWaitMs,
+      });
+      return { messageId };
+    } catch (err) {
+      logSend("wpp_send_failed", cid, {
+        stage: "client.sendText",
+        error_kind: exceptionKind(err),
+        error_message: sanitizeErrorMessage(err instanceof Error ? err.message : "non_error"),
+        duration_ms: Date.now() - wppStartedAt,
+        total_duration_ms: Date.now() - startedAt,
+        queue_wait_ms: acquiredWaitMs,
+      });
+      throw err;
+    }
   });
 
-  const normalized = normalizeSendPhone(phone);
-  if (!normalized) {
-    const error = new Error("Phone number is not a valid international number.");
-    (error as Error & { code?: string }).code = "INVALID_PHONE";
-    logSend("wpp_send_failed", cid, {
-      stage: "validate_phone",
-      error_kind: "INVALID_PHONE",
-      duration_ms: Date.now() - startedAt,
-    });
-    throw error;
+  if (queueWaitMs > 0) {
+    logSend("browser_queue_waited", cid, { queue_wait_ms: queueWaitMs });
   }
-
-  // Never log message body, tokens, or full destination.
-  const active = client;
-  const wppStartedAt = Date.now();
-  logSend("wpp_send_started", cid, {
-    to_masked: maskDestination(normalized),
-    ms_since_request: wppStartedAt - startedAt,
-  });
-  try {
-    const result = await active.sendText(normalized, message);
-    const messageId = resultId(result) || `${Date.now()}`;
-    logSend("wpp_send_succeeded", cid, {
-      result_ok: true,
-      duration_ms: Date.now() - wppStartedAt,
-      total_duration_ms: Date.now() - startedAt,
-    });
-    return { messageId };
-  } catch (err) {
-    logSend("wpp_send_failed", cid, {
-      stage: "client.sendText",
-      error_kind: exceptionKind(err),
-      error_message: sanitizeErrorMessage(err instanceof Error ? err.message : "non_error"),
-      duration_ms: Date.now() - wppStartedAt,
-      total_duration_ms: Date.now() - startedAt,
-    });
-    throw err;
-  }
+  return result;
 }
