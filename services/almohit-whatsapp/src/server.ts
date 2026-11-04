@@ -57,11 +57,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     try {
       const session = await unlinkWhatsApp();
       // Unlink success is not re-link success.
-      json(res, 200, {
-        ok: true,
-        unlinked: true,
+      json(res, session.unlinked ? 200 : 500, {
+        ok: session.unlinked,
+        unlinked: session.unlinked,
+        relinked: session.relinked,
+        relink_error: session.relink_error,
         connected: false,
-        ...session,
+        whatsapp: session.whatsapp,
+        qr: session.qr,
       });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : "Unlink failed.";
