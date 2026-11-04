@@ -53,5 +53,5 @@
         parent="menu_almohit_whatsapp"
         action="action_almohit_whatsapp_session_log"
         sequence="15"
-        groups="base.group_user"/>
+        groups="almohit_core.group_almohit_operations_admin"/>
 </odoo>

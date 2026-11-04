@@ -1,8 +1,7 @@
 """Warehouse packing / manufacturing over native Odoo MRP.
 
-Phase 1: list BoMs and manufacturing orders scoped to assigned warehouses.
-Phase 2: create/update warehouse-scoped BoMs; create draft manufacturing orders.
-Phase 3: confirm + complete via native mrp.production (no direct stock.quant writes).
+BoM CRUD + list/get MOs; packing execution is a single atomic
+create → confirm/assign → complete (button_mark_done) flow via execute_order.
 """
 import math
 import re
@@ -261,21 +260,11 @@ def serialize_production(production, detail=False, warehouses=None):
         finished_moves = production.move_finished_ids.filtered(
             lambda move: move.state != "cancel"
         )
-        main_finished = finished_moves.filtered(
-            lambda move: move.product_id == production.product_id
-            and not getattr(move, "byproduct_id", False)
-        )
-        byproduct_moves = finished_moves.filtered(
-            lambda move: bool(getattr(move, "byproduct_id", False))
-            or move.product_id != production.product_id
-        )
+        # One list for all produced outputs. Clients distinguish the main
+        # finished product vs by-products via is_byproduct on each move.
         item["components"] = [_serialize_stock_move(move) for move in raw_moves]
         item["finished_moves"] = [
             _serialize_stock_move(move) for move in finished_moves
-        ]
-        item["byproducts"] = [_serialize_stock_move(move) for move in byproduct_moves]
-        item["main_finished"] = [
-            _serialize_stock_move(move) for move in main_finished
         ]
         # Waste/scrap is recorded via stock.scrap (if any), not via MO moves.
         scraps = production.env["stock.scrap"].sudo().search(
@@ -296,6 +285,7 @@ def serialize_production(production, detail=False, warehouses=None):
             "consumed_qty": "Raw move quantity posted after MO is done.",
             "produced_qty": "Finished / by-product quantity posted after MO is done.",
             "scrap_qty": "Quantity moved to scrap via stock.scrap (deducted once).",
+            "is_byproduct": "On finished_moves: false = main finished product, true = by-product.",
         }
     return item
 
@@ -925,130 +915,25 @@ def _idempotency_origin(partner, key):
     return "%s%s:%s" % (_IDEMPOTENCY_ORIGIN_PREFIX, partner.id, key)
 
 
-def create_order(partner, payload):
-    assignment, err = assignment_or_error(partner)
-    if err:
-        return err
-    err = require_perm(assignment, "perm_packing", "packing")
-    if err:
-        return err
-    if not isinstance(payload, dict):
-        return error("INVALID_JSON", "Invalid JSON body.", 400)
-
-    allowed = {"bom_id", "warehouse_id", "quantity", "idempotency_key"}
-    extra = set(payload) - allowed
-    if extra:
-        return error("INVALID_FIELDS", "One or more fields are not allowed.", 400)
-    if "location_id" in payload or "location_dest_id" in payload:
-        return error(
+def _require_idempotency_key(raw_key):
+    if raw_key is None or raw_key == "":
+        return None, error(
             "INVALID_FIELDS",
-            "location_id and location_dest_id are not accepted.",
+            "idempotency_key is required.",
             400,
         )
-
-    bom_id = strict_int(payload.get("bom_id"))
-    warehouse_id = strict_int(payload.get("warehouse_id"))
-    if not bom_id or not warehouse_id:
-        return error(
+    idem_key = str(raw_key).strip()
+    if not _IDEMPOTENCY_RE.match(idem_key):
+        return None, error(
             "INVALID_FIELDS",
-            "bom_id and warehouse_id are required.",
+            "idempotency_key must be 1..64 chars: letters, digits, . _ : -",
             400,
         )
-    qty, qty_err = _positive_finite_qty(payload.get("quantity"), "quantity")
-    if qty_err:
-        return qty_err
-
-    raw_key = payload.get("idempotency_key")
-    idem_key = None
-    if raw_key is not None and raw_key != "":
-        idem_key = str(raw_key).strip()
-        if not _IDEMPOTENCY_RE.match(idem_key):
-            return error(
-                "INVALID_FIELDS",
-                "idempotency_key must be 1..64 chars: letters, digits, . _ : -",
-                400,
-            )
-
-    bom = partner.env["mrp.bom"].sudo().browse(bom_id).exists()
-    if not bom or bom.type != "normal":
-        return error("BOM_NOT_FOUND", "Bill of materials not found.", 404)
-
-    resolved, wh_err = _resolve_assigned_warehouse(partner, assignment, warehouse_id)
-    if wh_err:
-        return wh_err
-    warehouse, picking_type = resolved
-
-    if not _bom_usable_for_warehouse(bom, warehouse, assignment):
-        return error(
-            "BOM_WAREHOUSE_MISMATCH",
-            "BoM is not usable for the selected warehouse.",
-            403,
-        )
-
-    finished = _bom_finished_product(bom)
-    if not finished:
-        return error(
-            "INVALID_BOM",
-            "BoM has no resolvable finished product variant.",
-            400,
-        )
-
-    warehouses = filter_assignment_warehouses(assignment)
-    if idem_key:
-        origin = _idempotency_origin(partner, idem_key)
-        existing = (
-            partner.env["mrp.production"]
-            .sudo()
-            .search(
-                [
-                    ("origin", "=", origin),
-                    ("company_id", "=", partner.env.company.id),
-                ],
-                order="id desc",
-                limit=1,
-            )
-        )
-        if existing:
-            return success(
-                serialize_production(
-                    existing, detail=True, warehouses=warehouses
-                ),
-                status=200,
-            )
-    else:
-        origin = False
-
-    vals = {
-        "product_id": finished.id,
-        "product_qty": qty,
-        "product_uom_id": finished.uom_id.id,
-        "bom_id": bom.id,
-        "picking_type_id": picking_type.id,
-        "company_id": partner.env.company.id,
-        "origin": origin,
-    }
-    # Let Odoo compute component/finished locations from the warehouse MO type.
-    try:
-        production = partner.env["mrp.production"].sudo().create(vals)
-    except (UserError, ValidationError) as exc:
-        return native_error("PACKING_ORDER_CREATE_FAILED", exc)
-
-    if production.state != "draft":
-        # Safety: never leave a non-draft MO from this endpoint.
-        return error(
-            "PACKING_ORDER_STATE",
-            "Manufacturing order was not left in draft; aborted.",
-            500,
-        )
-
-    return success(
-        serialize_production(production, detail=True, warehouses=warehouses),
-        status=201,
-    )
+    return idem_key, None
 
 
 def _lock_production(production):
-    """Serialize concurrent confirm/complete without aborting the transaction.
+    """Serialize concurrent packing execute without aborting the transaction.
 
     Uses a transaction-scoped advisory lock, then a row lock for state reads.
     """
@@ -1097,83 +982,101 @@ def _warehouse_of_production(production, assignment):
     return warehouse_for_location(production.location_dest_id, warehouses)
 
 
-def confirm_order(partner, production_id, payload=None):
-    assignment, err = assignment_or_error(partner)
-    if err:
-        return err
-    err = require_perm(assignment, "perm_packing", "packing")
-    if err:
-        return err
-    payload = payload if isinstance(payload, dict) else {}
-    if payload:
-        return error(
-            "INVALID_FIELDS",
-            "Confirm does not accept body fields (no location_id / location_dest_id).",
-            400,
+def _create_draft_production(
+    partner, assignment, bom, warehouse, picking_type, qty, origin
+):
+    """Create draft mrp.production. Raises _PackingAbort. Returns production."""
+    finished = _bom_finished_product(bom)
+    if not finished:
+        raise _PackingAbort(
+            error(
+                "INVALID_BOM",
+                "BoM has no resolvable finished product variant.",
+                400,
+            )
         )
+    vals = {
+        "product_id": finished.id,
+        "product_qty": qty,
+        "product_uom_id": finished.uom_id.id,
+        "bom_id": bom.id,
+        "picking_type_id": picking_type.id,
+        "company_id": partner.env.company.id,
+        "origin": origin,
+    }
+    # Let Odoo compute component/finished locations from the warehouse MO type.
+    try:
+        production = partner.env["mrp.production"].sudo().create(vals)
+    except (UserError, ValidationError) as exc:
+        raise _PackingAbort(native_error("PACKING_ORDER_CREATE_FAILED", exc))
 
-    production, err = _get_accessible_production(partner, production_id, assignment)
-    if err:
-        return err
+    if production.state != "draft":
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_STATE",
+                "Manufacturing order was not left in draft; aborted.",
+                500,
+            )
+        )
+    return production
 
-    warehouses = filter_assignment_warehouses(assignment)
-    lock_err = _lock_production(production)
-    if lock_err:
-        return lock_err
-    production.invalidate_recordset()
 
+def _confirm_production(production, assignment, warehouses):
+    """Native action_confirm + action_assign. Raises _PackingAbort."""
     if production.state in ("confirmed", "progress", "to_close"):
-        # Idempotent retry: already confirmed, no duplicate move confirm.
-        return success(
-            serialize_production(production, detail=True, warehouses=warehouses)
-        )
+        return
     if production.state == "done":
-        return error(
-            "PACKING_ORDER_ALREADY_DONE",
-            "Manufacturing order is already done.",
-            409,
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_ALREADY_DONE",
+                "Manufacturing order is already done.",
+                409,
+            )
         )
     if production.state == "cancel":
-        return error(
-            "PACKING_ORDER_CANCELLED",
-            "Manufacturing order is cancelled.",
-            409,
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_CANCELLED",
+                "Manufacturing order is cancelled.",
+                409,
+            )
         )
     if production.state != "draft":
-        return error(
-            "PACKING_ORDER_INVALID_STATE",
-            "Only draft manufacturing orders can be confirmed.",
-            409,
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_INVALID_STATE",
+                "Only draft manufacturing orders can be confirmed.",
+                409,
+            )
         )
 
     warehouse = _warehouse_of_production(production, assignment)
     if not warehouse:
-        return error(
-            "WAREHOUSE_NOT_ALLOWED",
-            "Manufacturing order warehouse is not assigned.",
-            403,
+        raise _PackingAbort(
+            error(
+                "WAREHOUSE_NOT_ALLOWED",
+                "Manufacturing order warehouse is not assigned.",
+                403,
+            )
         )
     if production.bom_id and not _bom_usable_for_warehouse(
         production.bom_id, warehouse, assignment
     ):
-        return error(
-            "BOM_WAREHOUSE_MISMATCH",
-            "BoM is not usable for the manufacturing order warehouse.",
-            403,
+        raise _PackingAbort(
+            error(
+                "BOM_WAREHOUSE_MISMATCH",
+                "BoM is not usable for the manufacturing order warehouse.",
+                403,
+            )
         )
 
     try:
-        with partner.env.cr.savepoint():
-            production.action_confirm()
-            if hasattr(production, "action_assign"):
-                production.action_assign()
+        production.action_confirm()
+        if hasattr(production, "action_assign"):
+            production.action_assign()
     except (UserError, ValidationError) as exc:
-        return native_error("PACKING_ORDER_CONFIRM_FAILED", exc)
-
+        raise _PackingAbort(native_error("PACKING_ORDER_CONFIRM_FAILED", exc))
     production.invalidate_recordset()
-    return success(
-        serialize_production(production, detail=True, warehouses=warehouses)
-    )
 
 
 def _non_negative_finite_qty(value, field_name="quantity"):
@@ -1563,7 +1466,231 @@ def _resolve_mark_done_result(production, result, create_backorder):
     )
 
 
-def complete_order(partner, production_id, payload):
+def _complete_production(partner, production, assignment, warehouses, payload):
+    """Apply actual qtys, button_mark_done, scraps. Raises _PackingAbort.
+
+    Caller must wrap this in a savepoint. Expects a confirmed/progress MO.
+    """
+    if production.state == "done":
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_ALREADY_DONE",
+                "Manufacturing order is already done.",
+                409,
+            )
+        )
+    if production.state == "cancel":
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_CANCELLED",
+                "Manufacturing order is cancelled.",
+                409,
+            )
+        )
+    if production.state == "draft":
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_NOT_CONFIRMED",
+                "Confirm the manufacturing order before completing it.",
+                409,
+            )
+        )
+    if production.state not in ("confirmed", "progress", "to_close"):
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_INVALID_STATE",
+                "Manufacturing order cannot be completed in state %s."
+                % production.state,
+                409,
+            )
+        )
+
+    warehouse = _warehouse_of_production(production, assignment)
+    if not warehouse:
+        raise _PackingAbort(
+            error(
+                "WAREHOUSE_NOT_ALLOWED",
+                "Manufacturing order warehouse is not assigned.",
+                403,
+            )
+        )
+
+    if "finished_qty" not in payload or payload.get("finished_qty") is None:
+        raise _PackingAbort(
+            error(
+                "INVALID_FIELDS",
+                "finished_qty is required.",
+                400,
+            )
+        )
+    finished_qty, qty_err = _positive_finite_qty(
+        payload.get("finished_qty"), "finished_qty"
+    )
+    if qty_err:
+        raise _PackingAbort(qty_err)
+
+    create_backorder = bool(payload.get("create_backorder"))
+
+    # Finished product quantity for this completion.
+    if production.product_id.tracking not in (False, "none"):
+        lot, lot_err = _resolve_lot(
+            partner.env,
+            production.product_id,
+            lot_id=payload.get("finished_lot_id"),
+            lot_name=payload.get("finished_lot_name"),
+            company=production.company_id,
+        )
+        if lot_err:
+            raise _PackingAbort(lot_err)
+        production.lot_producing_id = lot.id
+
+    # Official Odoo path: qty_producing drives finished + proportional lines.
+    production.qty_producing = finished_qty
+    if hasattr(production, "set_qty_producing"):
+        production.set_qty_producing()
+    elif hasattr(production, "_set_qty_producing"):
+        production._set_qty_producing()
+
+    raw_moves = production.move_raw_ids.filtered(
+        lambda move: move.state != "cancel"
+    )
+    finished_moves = production.move_finished_ids.filtered(
+        lambda move: move.state != "cancel"
+    )
+    byproduct_moves = finished_moves.filtered(
+        lambda move: bool(getattr(move, "byproduct_id", False))
+        or move.product_id != production.product_id
+    )
+    main_moves = finished_moves.filtered(
+        lambda move: move.product_id == production.product_id
+        and not getattr(move, "byproduct_id", False)
+    )
+    if not main_moves:
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_NO_FINISHED_MOVE",
+                "Manufacturing order has no finished-product move to complete.",
+                409,
+            )
+        )
+
+    if "components" in payload:
+        apply_err = _apply_qty_rows(
+            raw_moves, payload.get("components"), "components"
+        )
+        if apply_err:
+            raise _PackingAbort(apply_err)
+    else:
+        for move in raw_moves:
+            if "picked" in move._fields:
+                move.picked = True
+
+    if "byproducts" in payload:
+        apply_err = _apply_qty_rows(
+            byproduct_moves,
+            payload.get("byproducts"),
+            "byproducts",
+            require_existing=True,
+        )
+        if apply_err:
+            raise _PackingAbort(apply_err)
+    else:
+        for move in byproduct_moves:
+            if "picked" in move._fields and _move_done_qty(move) > 0:
+                move.picked = True
+
+    # Do NOT manually force the main finished move quantity/picked flag.
+    # Odoo _post_inventory sets it from qty_producing; touching the move
+    # early can leave it unpicked and get it cancelled during mark_done.
+    production.write({"qty_producing": finished_qty})
+    if float_compare(
+        float(production.qty_producing or 0.0),
+        finished_qty,
+        precision_rounding=production.product_uom_id.rounding,
+    ) != 0:
+        raise _PackingAbort(
+            error(
+                "PACKING_QTY_FAILED",
+                "Failed to persist finished_qty on the manufacturing order.",
+                500,
+            )
+        )
+
+    avail_err = _ensure_component_availability(production, warehouses)
+    if avail_err:
+        raise _PackingAbort(avail_err)
+
+    # Multi-step manufacturing leaves component pickings open; raw moves
+    # that are not picked are cancelled by _post_inventory and can cancel
+    # the MO. Refuse instead of corrupting stock.
+    warehouse_mo = production.warehouse_id or warehouse
+    if (
+        warehouse_mo
+        and warehouse_mo.manufacture_steps != "mrp_one_step"
+        and production.picking_ids.filtered(
+            lambda picking: picking.state not in ("done", "cancel")
+        )
+    ):
+        raise _PackingAbort(
+            error(
+                "PACKING_PICKINGS_PENDING",
+                "Warehouse uses multi-step manufacturing. Finish component "
+                "pickings in Odoo (or use a one-step manufacturing warehouse) "
+                "before completing from the app.",
+                409,
+            )
+        )
+
+    production.flush_recordset()
+    # Exact component/finished quantities were set by the API. Skip the
+    # interactive consumption wizard; still resolve backorder when asked.
+    mark_ctx = {
+        "skip_redirection": True,
+        "skip_consumption": True,
+    }
+    if not create_backorder:
+        mark_ctx["skip_backorder"] = True
+    try:
+        result = production.with_context(**mark_ctx).button_mark_done()
+    except (UserError, ValidationError) as exc:
+        raise _PackingAbort(native_error("PACKING_ORDER_COMPLETE_FAILED", exc))
+    wizard_err = _resolve_mark_done_result(
+        production, result, create_backorder=create_backorder
+    )
+    if wizard_err:
+        raise _PackingAbort(wizard_err)
+
+    production.invalidate_recordset()
+    if production.state == "cancel":
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_CANCELLED",
+                "Manufacturing order was cancelled during completion.",
+                409,
+            )
+        )
+    if production.state != "done":
+        raise _PackingAbort(
+            error(
+                "PACKING_ORDER_NOT_DONE",
+                "Manufacturing order was not marked done by Odoo (state=%s)."
+                % production.state,
+                500,
+            )
+        )
+
+    # Scraps post once via stock.scrap after MO is done so they do not
+    # disturb reservations / mark_done wizards. Do not also include the
+    # same physical units inside components[].
+    scrap_err = _process_scraps(
+        production, payload.get("scraps"), warehouses
+    )
+    if scrap_err:
+        raise _PackingAbort(scrap_err)
+
+
+def execute_order(partner, payload):
+    """Create + confirm + complete packing MO atomically in one request."""
     assignment, err = assignment_or_error(partner)
     if err:
         return err
@@ -1574,8 +1701,11 @@ def complete_order(partner, production_id, payload):
         return error("INVALID_JSON", "Invalid JSON body.", 400)
 
     allowed = {
+        "bom_id",
+        "warehouse_id",
+        "quantity",
+        "idempotency_key",
         "finished_qty",
-        "quantity",  # alias of finished_qty
         "finished_lot_id",
         "finished_lot_name",
         "create_backorder",
@@ -1593,203 +1723,112 @@ def complete_order(partner, production_id, payload):
             400,
         )
 
-    production, err = _get_accessible_production(partner, production_id, assignment)
-    if err:
-        return err
-
-    warehouses = filter_assignment_warehouses(assignment)
-    lock_err = _lock_production(production)
-    if lock_err:
-        return lock_err
-    production.invalidate_recordset()
-
-    if production.state == "done":
+    bom_id = strict_int(payload.get("bom_id"))
+    warehouse_id = strict_int(payload.get("warehouse_id"))
+    if not bom_id or not warehouse_id:
         return error(
-            "PACKING_ORDER_ALREADY_DONE",
-            "Manufacturing order is already done.",
-            409,
+            "INVALID_FIELDS",
+            "bom_id and warehouse_id are required.",
+            400,
         )
-    if production.state == "cancel":
-        return error(
-            "PACKING_ORDER_CANCELLED",
-            "Manufacturing order is cancelled.",
-            409,
-        )
-    if production.state == "draft":
-        return error(
-            "PACKING_ORDER_NOT_CONFIRMED",
-            "Confirm the manufacturing order before completing it.",
-            409,
-        )
-    if production.state not in ("confirmed", "progress", "to_close"):
-        return error(
-            "PACKING_ORDER_INVALID_STATE",
-            "Manufacturing order cannot be completed in state %s." % production.state,
-            409,
-        )
-
-    warehouse = _warehouse_of_production(production, assignment)
-    if not warehouse:
-        return error(
-            "WAREHOUSE_NOT_ALLOWED",
-            "Manufacturing order warehouse is not assigned.",
-            403,
-        )
-
-    raw_finished = (
-        payload["finished_qty"]
-        if "finished_qty" in payload
-        else payload.get("quantity")
-    )
-    if raw_finished is None:
+    qty, qty_err = _positive_finite_qty(payload.get("quantity"), "quantity")
+    if qty_err:
+        return qty_err
+    if "finished_qty" not in payload or payload.get("finished_qty") is None:
         return error(
             "INVALID_FIELDS",
             "finished_qty is required.",
             400,
         )
-    finished_qty, qty_err = _positive_finite_qty(raw_finished, "finished_qty")
-    if qty_err:
-        return qty_err
+    finished_qty, fin_err = _positive_finite_qty(
+        payload.get("finished_qty"), "finished_qty"
+    )
+    if fin_err:
+        return fin_err
 
-    create_backorder = bool(payload.get("create_backorder"))
+    idem_key, key_err = _require_idempotency_key(payload.get("idempotency_key"))
+    if key_err:
+        return key_err
 
+    bom = partner.env["mrp.bom"].sudo().browse(bom_id).exists()
+    if not bom or bom.type != "normal":
+        return error("BOM_NOT_FOUND", "Bill of materials not found.", 404)
+
+    resolved, wh_err = _resolve_assigned_warehouse(partner, assignment, warehouse_id)
+    if wh_err:
+        return wh_err
+    warehouse, picking_type = resolved
+
+    if not _bom_usable_for_warehouse(bom, warehouse, assignment):
+        return error(
+            "BOM_WAREHOUSE_MISMATCH",
+            "BoM is not usable for the selected warehouse.",
+            403,
+        )
+
+    warehouses = filter_assignment_warehouses(assignment)
+    origin = _idempotency_origin(partner, idem_key)
+    existing = (
+        partner.env["mrp.production"]
+        .sudo()
+        .search(
+            [
+                ("origin", "=", origin),
+                ("company_id", "=", partner.env.company.id),
+            ],
+            order="id desc",
+            limit=1,
+        )
+    )
+    if existing:
+        if existing.state == "done":
+            return success(
+                serialize_production(
+                    existing, detail=True, warehouses=warehouses
+                ),
+                status=200,
+            )
+        return error(
+            "PACKING_ORDER_IDEMPOTENCY_CONFLICT",
+            "idempotency_key is already used by an incomplete manufacturing order.",
+            409,
+        )
+
+    complete_payload = {
+        "finished_qty": finished_qty,
+        "create_backorder": bool(payload.get("create_backorder")),
+    }
+    for field_name in (
+        "finished_lot_id",
+        "finished_lot_name",
+        "components",
+        "byproducts",
+        "scraps",
+    ):
+        if field_name in payload:
+            complete_payload[field_name] = payload[field_name]
+
+    production = partner.env["mrp.production"]
     try:
         with partner.env.cr.savepoint():
-            # Finished product quantity for this completion.
-            if production.product_id.tracking not in (False, "none"):
-                lot, lot_err = _resolve_lot(
-                    partner.env,
-                    production.product_id,
-                    lot_id=payload.get("finished_lot_id"),
-                    lot_name=payload.get("finished_lot_name"),
-                    company=production.company_id,
-                )
-                if lot_err:
-                    raise _PackingAbort(lot_err)
-                production.lot_producing_id = lot.id
-
-            # Official Odoo path: qty_producing drives finished + proportional lines.
-            production.qty_producing = finished_qty
-            if hasattr(production, "set_qty_producing"):
-                production.set_qty_producing()
-            elif hasattr(production, "_set_qty_producing"):
-                production._set_qty_producing()
-
-            raw_moves = production.move_raw_ids.filtered(
-                lambda move: move.state != "cancel"
+            production = _create_draft_production(
+                partner,
+                assignment,
+                bom,
+                warehouse,
+                picking_type,
+                qty,
+                origin,
             )
-            finished_moves = production.move_finished_ids.filtered(
-                lambda move: move.state != "cancel"
-            )
-            byproduct_moves = finished_moves.filtered(
-                lambda move: bool(getattr(move, "byproduct_id", False))
-                or move.product_id != production.product_id
-            )
-            main_moves = finished_moves.filtered(
-                lambda move: move.product_id == production.product_id
-                and not getattr(move, "byproduct_id", False)
-            )
-            if not main_moves:
-                raise _PackingAbort(
-                    error(
-                        "PACKING_ORDER_NO_FINISHED_MOVE",
-                        "Manufacturing order has no finished-product move to complete.",
-                        409,
-                    )
-                )
-
-            if "components" in payload:
-                apply_err = _apply_qty_rows(
-                    raw_moves, payload.get("components"), "components"
-                )
-                if apply_err:
-                    raise _PackingAbort(apply_err)
-            else:
-                for move in raw_moves:
-                    if "picked" in move._fields:
-                        move.picked = True
-
-            if "byproducts" in payload:
-                apply_err = _apply_qty_rows(
-                    byproduct_moves,
-                    payload.get("byproducts"),
-                    "byproducts",
-                    require_existing=True,
-                )
-                if apply_err:
-                    raise _PackingAbort(apply_err)
-            else:
-                for move in byproduct_moves:
-                    if "picked" in move._fields and _move_done_qty(move) > 0:
-                        move.picked = True
-
-            # Do NOT manually force the main finished move quantity/picked flag.
-            # Odoo _post_inventory sets it from qty_producing; touching the move
-            # early can leave it unpicked and get it cancelled during mark_done.
-            production.write({"qty_producing": finished_qty})
-            if float_compare(
-                float(production.qty_producing or 0.0),
-                finished_qty,
-                precision_rounding=production.product_uom_id.rounding,
-            ) != 0:
-                raise _PackingAbort(
-                    error(
-                        "PACKING_QTY_FAILED",
-                        "Failed to persist finished_qty on the manufacturing order.",
-                        500,
-                    )
-                )
-
-            avail_err = _ensure_component_availability(production, warehouses)
-            if avail_err:
-                raise _PackingAbort(avail_err)
-
-            # Multi-step manufacturing leaves component pickings open; raw moves
-            # that are not picked are cancelled by _post_inventory and can cancel
-            # the MO. Refuse instead of corrupting stock.
-            warehouse_mo = production.warehouse_id or warehouse
-            if (
-                warehouse_mo
-                and warehouse_mo.manufacture_steps != "mrp_one_step"
-                and production.picking_ids.filtered(
-                    lambda picking: picking.state not in ("done", "cancel")
-                )
-            ):
-                raise _PackingAbort(
-                    error(
-                        "PACKING_PICKINGS_PENDING",
-                        "Warehouse uses multi-step manufacturing. Finish component "
-                        "pickings in Odoo (or use a one-step manufacturing warehouse) "
-                        "before completing from the app.",
-                        409,
-                    )
-                )
-
-            production.flush_recordset()
-            # Exact component/finished quantities were set by the API. Skip the
-            # interactive consumption wizard; still resolve backorder when asked.
-            mark_ctx = {
-                "skip_redirection": True,
-                "skip_consumption": True,
-            }
-            if not create_backorder:
-                mark_ctx["skip_backorder"] = True
-            result = production.with_context(**mark_ctx).button_mark_done()
-            wizard_err = _resolve_mark_done_result(
-                production, result, create_backorder=create_backorder
-            )
-            if wizard_err:
-                raise _PackingAbort(wizard_err)
-
+            lock_err = _lock_production(production)
+            if lock_err:
+                raise _PackingAbort(lock_err)
             production.invalidate_recordset()
-            if production.state == "cancel":
-                raise _PackingAbort(
-                    error(
-                        "PACKING_ORDER_CANCELLED",
-                        "Manufacturing order was cancelled during completion.",
-                        409,
-                    )
-                )
+            _confirm_production(production, assignment, warehouses)
+            _complete_production(
+                partner, production, assignment, warehouses, complete_payload
+            )
+            production.invalidate_recordset()
             if production.state != "done":
                 raise _PackingAbort(
                     error(
@@ -1799,20 +1838,12 @@ def complete_order(partner, production_id, payload):
                         500,
                     )
                 )
-
-            # Scraps post once via stock.scrap after MO is done so they do not
-            # disturb reservations / mark_done wizards. Do not also include the
-            # same physical units inside components[].
-            scrap_err = _process_scraps(
-                production, payload.get("scraps"), warehouses
-            )
-            if scrap_err:
-                raise _PackingAbort(scrap_err)
     except _PackingAbort as abort:
         return abort.response
     except (UserError, ValidationError) as exc:
-        return native_error("PACKING_ORDER_COMPLETE_FAILED", exc)
+        return native_error("PACKING_ORDER_EXECUTE_FAILED", exc)
 
     return success(
-        serialize_production(production, detail=True, warehouses=warehouses)
+        serialize_production(production, detail=True, warehouses=warehouses),
+        status=201,
     )

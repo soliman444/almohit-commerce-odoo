@@ -3,10 +3,10 @@ from pathlib import Path
 
 path = Path(r"G:\odoo17-docker\addons\almohit_core\static\src\api_docs\openapi.json")
 doc = json.loads(path.read_text(encoding="utf-8"))
-doc["info"]["version"] = "17.0.1.76.0"
+doc["info"]["version"] = "17.0.1.78.0"
 desc = doc["info"].get("description") or ""
 for old in ("17.0.1.75.0", "17.0.1.74.0", "17.0.1.73.0"):
-    desc = desc.replace(old, "17.0.1.76.0")
+    desc = desc.replace(old, "17.0.1.78.0")
 doc["info"]["description"] = desc
 
 paths = doc["paths"]

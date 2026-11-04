@@ -153,25 +153,29 @@
         <field name="context">{}</field>
     </record>
 
-    <menuitem id="menu_almohit_root" name="Almohit" sequence="45" groups="base.group_user"/>
+    <menuitem
+        id="menu_almohit_root"
+        name="Almohit"
+        sequence="45"
+        groups="almohit_core.group_almohit_operations_admin,base.group_system"/>
     <menuitem
         id="menu_almohit_whatsapp"
         name="WhatsApp"
         parent="menu_almohit_root"
         sequence="10"
-        groups="base.group_user"/>
+        groups="almohit_core.group_almohit_operations_admin,base.group_system"/>
     <menuitem
         id="menu_almohit_whatsapp_templates"
         name="Templates"
         parent="menu_almohit_whatsapp"
         action="action_almohit_notification_template"
         sequence="10"
-        groups="base.group_user"/>
+        groups="almohit_core.group_almohit_operations_admin"/>
     <menuitem
         id="menu_almohit_whatsapp_logs"
         name="Notification Logs"
         parent="menu_almohit_whatsapp"
         action="action_almohit_notification_log"
         sequence="20"
-        groups="base.group_user"/>
+        groups="almohit_core.group_almohit_operations_admin"/>
 </odoo>

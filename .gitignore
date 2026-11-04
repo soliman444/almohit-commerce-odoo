@@ -17,6 +17,7 @@ Thumbs.db
 cookies.txt
 *.tmp
 _*.py
+!addons/almohit_core/tests/__init__.py
 _*.json
 _*.txt
 _*.ps1

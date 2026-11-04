@@ -130,11 +130,11 @@ Optional create fields: `note`, `idempotency_key`; optional line field: `uom_id`
 
 States: `draft → requested → dispatched → partially_received|received|discrepancy → closed` (+ `rejected` / `cancelled`). `POST /transfers` returns `dispatched` on success.
 
-### Packing / manufacturing (phase 2 — BoM manage + draft MO)
-Native Odoo `mrp.bom` / `mrp.production`. Confirm / complete are **not** enabled yet. App must **not** send `location_id` / `location_dest_id`.
+### Packing / manufacturing
+Native Odoo `mrp.bom` / `mrp.production`. Execution is one atomic POST. App must **not** send `location_id` / `location_dest_id`.
 
 Permissions:
-- Read BoMs / MOs + create draft MO: `packing` (`perm_packing`)
+- Read BoMs / MOs + execute packing: `packing` (`perm_packing`)
 - Create / update BoMs: `packing_bom_manage` (`perm_packing_bom_manage`) — independent of packing
 
 - `GET /packing/boms?q=&product_id=&page=`
@@ -144,24 +144,27 @@ Permissions:
 - `GET /packing/boms/{id}`
 - `PATCH /packing/boms/{id}` — same writable fields; refuses shared BoMs (`BOM_SHARED_READONLY`) and BoMs of unassigned warehouses (`BOM_WAREHOUSE_DENIED`); refuses edit when confirmed/done MOs exist (`BOM_IN_USE`).
 - `GET /packing/orders?status=&q=&page=`
-- `POST /packing/orders` — body: `{ bom_id, warehouse_id, quantity, idempotency_key? }`
-  - Creates `mrp.production` in **draft** only (no `action_confirm` / no stock posting).
-  - Retries with the same `idempotency_key` return the existing MO (`origin = almohit:packing:{partner_id}:{key}`).
-- `GET /packing/orders/{id}`
-- `POST /packing/orders/{id}/confirm` — empty body. Calls native `action_confirm` + `action_assign`. Idempotent if already confirmed. No stock qty change.
-- `POST /packing/orders/{id}/complete` — body example:
+- `GET /packing/orders/{id}` — detail includes `components`, `finished_moves` (main + by-products; use `is_byproduct`), and `scraps`. No separate `main_finished` / `byproducts` response arrays.
+- `POST /packing/orders/execute` — single atomic create → confirm/assign → complete. Body example:
   ```json
   {
-    "finished_qty": 8,
-    "finished_lot_name": "LOT-A-1",
+    "bom_id": 15,
+    "warehouse_id": 1,
+    "quantity": 50,
+    "idempotency_key": "packing-2026-001",
+    "finished_qty": 45,
+    "finished_lot_name": "POM-LOT-001",
     "create_backorder": false,
-    "components": [{"product_id": 10, "quantity": 85, "lot_id": 3}],
-    "byproducts": [{"product_id": 11, "quantity": 3}],
-    "scraps": [{"product_id": 10, "quantity": 1}]
+    "components": [{"product_id": 100, "quantity": 50}],
+    "byproducts": [{"product_id": 101, "quantity": 20}],
+    "scraps": [{"product_id": 100, "quantity": 5}]
   }
   ```
-  - Quantity semantics: `planned_qty` (ordered), `consumed_qty` (raw posted), `produced_qty` (finished/byproduct posted), scrap via `stock.scrap` once (do **not** also put the same units in `components`).
+  - `quantity` = planned MO qty; `finished_qty` = actual finished qty (required; not an alias of `quantity`).
+  - `idempotency_key` is **required**. Same key on a done MO returns that MO (`origin = almohit:packing:{partner_id}:{key}`). Incomplete MO with same key → `PACKING_ORDER_IDEMPOTENCY_CONFLICT`.
+  - Failure after create rolls back the whole request (no leftover draft/confirmed MO).
   - By-products must already exist on the MO/BoM (`BYPRODUCT_NOT_ON_BOM` otherwise).
+  - Scrap via `stock.scrap` once (do **not** also put the same units in `components`).
   - No `location_id` / `location_dest_id`. Uses Odoo `button_mark_done` + wizard resolution.
 
 ### Inventory / opening balances

@@ -178,9 +178,7 @@ get_packing_order = warehouse_packing.get_order
 get_packing_bom = warehouse_packing.get_bom
 create_packing_bom = warehouse_packing.create_bom
 update_packing_bom = warehouse_packing.update_bom
-create_packing_order = warehouse_packing.create_order
-confirm_packing_order = warehouse_packing.confirm_order
-complete_packing_order = warehouse_packing.complete_order
+execute_packing_order = warehouse_packing.execute_order
 
 
 def list_movements(partner, kwargs):

@@ -82,10 +82,10 @@
 
     <menuitem
         id="menu_almohit_warehouse_root"
-        name="Almohit Warehouse"
-        parent="stock.menu_stock_root"
-        sequence="90"
-        groups="stock.group_stock_manager"
+        name="Warehouse"
+        parent="menu_almohit_root"
+        sequence="20"
+        groups="almohit_core.group_almohit_operations_admin"
     />
     <menuitem
         id="menu_almohit_warehouse_assignment"
@@ -93,6 +93,6 @@
         parent="menu_almohit_warehouse_root"
         action="action_almohit_warehouse_assignment"
         sequence="10"
-        groups="stock.group_stock_manager"
+        groups="almohit_core.group_almohit_operations_admin"
     />
 </odoo>
