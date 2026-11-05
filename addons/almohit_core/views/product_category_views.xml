@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_almohit_product_category_form_image"
+            model="ir.ui.view">
+
+        <field name="name">
+            almohit.product.category.form.image
+        </field>
+
+        <field name="model">product.category</field>
+
+        <field name="inherit_id"
+               ref="product.product_category_form_view"/>
+
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Category Image">
+                    <field name="image_1920"
+                           widget="image"
+                           class="oe_avatar"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

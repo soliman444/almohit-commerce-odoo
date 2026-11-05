@@ -111,7 +111,11 @@ def _storefront_pricing(env, user, kwargs=None):
     try:
         pricelist = storefront_pricelist(env, user.partner_id, currency)
     except StorefrontCurrencyError as exc:
-        return None, None, error("INVALID_CURRENCY", str(exc), 400)
+        # Explicit currency request → hard error. No currency + missing/invalid
+        # merchant pricelist → still return the catalog without prices.
+        if currency is not None:
+            return None, None, error("INVALID_CURRENCY", str(exc), 400)
+        return None, None, None
     return pricelist, pricelist.currency_id.name, None
 
 

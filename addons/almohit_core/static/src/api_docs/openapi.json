@@ -2441,13 +2441,23 @@
                           "id": 4,
                           "name": "Basic Fruits",
                           "complete_name": "Basic Fruits",
-                          "parent_id": null
+                          "parent_id": null,
+                          "image_url": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "URL of the category image, or null if no image is uploaded."
+                          }
                         },
                         {
                           "id": 5,
                           "name": "Berries",
                           "complete_name": "Berries",
-                          "parent_id": null
+                          "parent_id": null,
+                          "image_url": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "URL of the category image, or null if no image is uploaded."
+                          }
                         }
                       ]
                     }
@@ -2462,7 +2472,12 @@
                             "id": 4,
                             "name": "Basic Fruits",
                             "complete_name": "Basic Fruits",
-                            "parent_id": null
+                            "parent_id": null,
+                            "image_url": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "URL of the category image, or null if no image is uploaded."
+                            }
                           }
                         ],
                         "pagination": {

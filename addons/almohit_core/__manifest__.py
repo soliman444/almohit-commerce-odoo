@@ -42,6 +42,7 @@
         "views/stock_picking_views.xml",
         "views/purchase_order_views.xml",
         "views/warehouse_assignment_views.xml",
+        "views/product_category_views.xml",
     ],
 
     "assets": {

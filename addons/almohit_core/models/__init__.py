@@ -20,3 +20,4 @@ from . import purchase_order
 from . import warehouse_assignment
 from . import warehouse_transfer
 from . import warehouse_inventory
+from . import product_category

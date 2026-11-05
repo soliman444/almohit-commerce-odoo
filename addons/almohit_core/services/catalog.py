@@ -247,13 +247,37 @@ def safe_serialize_template(tmpl, **kwargs):
         return None
 
 
+
 def serialize_category(category):
+    image_url = None
+
+    if category.image_1920:
+        attachment = category.env["ir.attachment"].sudo().search([
+            ("res_model", "=", "product.category"),
+            ("res_id", "=", category.id),
+            ("res_field", "=", "image_1920"),
+            ("public", "=", True),
+        ], limit=1)
+
+        if attachment:
+            base_url = request.httprequest.host_url.rstrip("/")
+            unique = (
+                category.write_date.strftime("%Y%m%d%H%M%S")
+                if category.write_date
+                else "1"
+            )
+            image_url = (
+                f"{base_url}/web/image/{attachment.id}?unique={unique}"
+            )
+
     return {
         "id": category.id,
         "name": category.name,
         "complete_name": category.complete_name,
         "parent_id": category.parent_id.id or None,
+        "image_url": image_url,
     }
+
 
 
 def saleable_categories(env):
