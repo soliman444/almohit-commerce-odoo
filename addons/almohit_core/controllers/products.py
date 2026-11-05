@@ -3,11 +3,13 @@ import math
 from odoo import http
 from odoo.http import request
 
-from ..services.api import success, error
+from ..services.api import success, error, parse_pagination, paginated_success, _query_scalar
 from ..services.catalog import (
     SALEABLE_DOMAIN,
+    filter_saleable_categories,
     may_see_price,
     pricelist_prices,
+    saleable_categories,
     saleable_template,
     saleable_templates,
     saleable_brands,
@@ -465,15 +467,40 @@ class AlmohitProductsController(http.Controller):
         csrf=False,
     )
     def list_categories(self, **kwargs):
-        templates = saleable_templates(request.env)
-        categories = templates.mapped("categ_id")
-        categories = categories.sorted(
-            key=lambda categ: (categ.complete_name or categ.name, categ.id)
+        # Legacy: no enhanced params → flat array (current storefront contract).
+        if not _categories_enhanced_requested(kwargs):
+            return success([
+                serialize_category(categ)
+                for categ in saleable_categories(request.env)
+            ])
+
+        page, page_size, page_err = parse_pagination(kwargs)
+        if page_err:
+            return page_err
+
+        parent_id, parent_err = _parse_categories_parent_id(kwargs)
+        if parent_err:
+            return parent_err
+
+        in_stock, stock_err = _parse_categories_in_stock(kwargs)
+        if stock_err:
+            return stock_err
+
+        sort_key, sort_err = _parse_categories_sort(kwargs)
+        if sort_err:
+            return sort_err
+
+        raw_q = _query_scalar(kwargs, "q")
+        q = str(raw_q).strip() if raw_q not in (None, "") else ""
+
+        ordered = filter_saleable_categories(
+            request.env,
+            q=q or None,
+            parent_id=parent_id,
+            in_stock=in_stock,
+            sort=sort_key,
         )
-        return success([
-            serialize_category(categ)
-            for categ in categories
-        ])
+        return paginated_success(ordered, serialize_category, page, page_size)
 
     @http.route(
         "/almohit/api/brands",
@@ -487,3 +514,62 @@ class AlmohitProductsController(http.Controller):
             serialize_brand(brand)
             for brand in saleable_brands(request.env)
         ])
+
+
+_CATEGORIES_ENHANCED_KEYS = ("page", "page_size", "q", "parent_id", "in_stock", "sort")
+_CATEGORIES_SORTS = frozenset(("newest", "oldest", "name_asc", "name_desc"))
+
+
+def _categories_enhanced_requested(kwargs):
+    for key in _CATEGORIES_ENHANCED_KEYS:
+        if _query_scalar(kwargs, key) not in (None, ""):
+            return True
+    return False
+
+
+def _parse_categories_parent_id(kwargs):
+    raw = _query_scalar(kwargs, "parent_id")
+    if raw in (None, ""):
+        return None, None
+    try:
+        parent_id = int(raw)
+    except (TypeError, ValueError):
+        return None, error(
+            "INVALID_FILTER",
+            "parent_id must be a positive integer.",
+            400,
+        )
+    if parent_id < 1:
+        return None, error(
+            "INVALID_FILTER",
+            "parent_id must be a positive integer.",
+            400,
+        )
+    return parent_id, None
+
+
+def _parse_categories_in_stock(kwargs):
+    raw = _query_scalar(kwargs, "in_stock")
+    if raw in (None, ""):
+        return None, None
+    value = str(raw).lower()
+    if value not in ("true", "false"):
+        return None, error(
+            "INVALID_FILTER",
+            "in_stock must be true or false.",
+            400,
+        )
+    return value == "true", None
+
+
+def _parse_categories_sort(kwargs):
+    raw = _query_scalar(kwargs, "sort")
+    if raw in (None, ""):
+        return None, None
+    if raw not in _CATEGORIES_SORTS:
+        return None, error(
+            "INVALID_SORT",
+            "sort must be one of: newest, oldest, name_asc, name_desc.",
+            400,
+        )
+    return raw, None

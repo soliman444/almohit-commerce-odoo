@@ -256,6 +256,87 @@ def serialize_category(category):
     }
 
 
+def saleable_categories(env):
+    """Distinct categories that directly hold at least one saleable template.
+
+    Ordered like the legacy GET /categories response.
+    """
+    categories = saleable_templates(env).mapped("categ_id")
+    return categories.sorted(
+        key=lambda categ: (categ.complete_name or categ.name, categ.id)
+    )
+
+
+def category_ids_with_saleable_stock(env):
+    """Category ids that have sellable in-stock products, including ancestors.
+
+    Stock uses ``template_in_stock(..., aggregated=True)`` from stock.py.
+    Only ``sale_ok`` templates from ``saleable_templates`` are considered.
+    """
+    templates = saleable_templates(env)
+    in_stock_templates = templates.filtered(
+        lambda tmpl: template_in_stock(tmpl, aggregated=True)
+    )
+    direct = in_stock_templates.mapped("categ_id")
+    ids = set(direct.ids)
+    for categ in direct:
+        path = categ.parent_path or ""
+        for part in path.split("/"):
+            if part:
+                ids.add(int(part))
+    return ids
+
+
+def filter_saleable_categories(env, *, q=None, parent_id=None, in_stock=None, sort=None):
+    """Filter → sort saleable categories for enhanced GET /categories.
+
+    Returns a deduplicated list of ``product.category`` records.
+    """
+    categories = saleable_categories(env)
+
+    if in_stock is not None:
+        stocked_ids = category_ids_with_saleable_stock(env)
+        if in_stock:
+            categories = env["product.category"].sudo().browse(sorted(stocked_ids)).exists()
+        else:
+            categories = categories.filtered(lambda categ: categ.id not in stocked_ids)
+
+    if parent_id is not None:
+        categories = categories.filtered(lambda categ: categ.parent_id.id == parent_id)
+
+    if q:
+        needle = q.lower()
+        categories = categories.filtered(
+            lambda categ: needle in (categ.name or "").lower()
+            or needle in (categ.complete_name or "").lower()
+        )
+
+    reverse = False
+    if sort == "newest":
+        key = lambda categ: (categ.create_date, categ.id)
+        reverse = True
+    elif sort == "oldest":
+        key = lambda categ: (categ.create_date, categ.id)
+    elif sort == "name_asc":
+        key = lambda categ: ((categ.name or "").lower(), categ.id)
+    elif sort == "name_desc":
+        key = lambda categ: ((categ.name or "").lower(), categ.id)
+        reverse = True
+    else:
+        key = lambda categ: (categ.complete_name or categ.name, categ.id)
+
+    categories = categories.sorted(key=key, reverse=reverse)
+
+    seen = set()
+    ordered = []
+    for categ in categories:
+        if categ.id in seen:
+            continue
+        seen.add(categ.id)
+        ordered.append(categ)
+    return ordered
+
+
 def serialize_brand(brand):
     return {
         "id": brand.id,

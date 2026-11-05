@@ -2362,10 +2362,126 @@
           "Catalog"
         ],
         "summary": "Categories that have saleable products",
+        "description": "Public. Without query params, returns the legacy flat array for storefront compatibility. When any of page, page_size, q, parent_id, in_stock, or sort is sent, returns a paginated envelope. in_stock=true includes categories that have sellable in-stock products on themselves or descendants (uses template_in_stock aggregated). sale_ok=False products are ignored.",
         "security": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Triggers paginated mode. Default 1."
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Triggers paginated mode. Default 20."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search name or complete_name (case-insensitive). Triggers paginated mode."
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Direct children only. Triggers paginated mode."
+          },
+          {
+            "name": "in_stock",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "true: categories with sellable stock (incl. child products). false: saleable categories without such stock. Triggers paginated mode."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "newest",
+                "oldest",
+                "name_asc",
+                "name_desc"
+              ]
+            },
+            "description": "newest/oldest use create_date then id. Triggers paginated mode."
+          }
+        ],
         "responses": {
           "200": {
-            "description": "`data` is an array of `{ id, name, complete_name, parent_id }`."
+            "description": "Legacy: data is Category[]. Paginated: data is { items, pagination }.",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "legacy": {
+                    "summary": "No query params",
+                    "value": {
+                      "ok": true,
+                      "data": [
+                        {
+                          "id": 4,
+                          "name": "Basic Fruits",
+                          "complete_name": "Basic Fruits",
+                          "parent_id": null
+                        },
+                        {
+                          "id": 5,
+                          "name": "Berries",
+                          "complete_name": "Berries",
+                          "parent_id": null
+                        }
+                      ]
+                    }
+                  },
+                  "paginated": {
+                    "summary": "With page / filters",
+                    "value": {
+                      "ok": true,
+                      "data": {
+                        "items": [
+                          {
+                            "id": 4,
+                            "name": "Basic Fruits",
+                            "complete_name": "Basic Fruits",
+                            "parent_id": null
+                          }
+                        ],
+                        "pagination": {
+                          "page": 1,
+                          "page_size": 20,
+                          "total": 1,
+                          "pages": 1,
+                          "has_next": false,
+                          "has_previous": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_PAGINATION | INVALID_FILTER | INVALID_SORT"
           }
         }
       }
