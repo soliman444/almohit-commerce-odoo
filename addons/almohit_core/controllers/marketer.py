@@ -95,6 +95,7 @@ class AlmohitMarketerController(http.Controller):
             "shop_image_content_type",
             "latitude",
             "longitude",
+            "country_code",
         }
         if extra_keys:
             return error(

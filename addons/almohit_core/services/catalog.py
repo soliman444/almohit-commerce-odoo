@@ -267,7 +267,7 @@ def serialize_category(category):
                 else "1"
             )
             image_url = (
-                f"{base_url}/web/image/{attachment.id}?unique={unique}"
+                f"{base_url}/web/image/{attachment.id}?unique={uniqgit ue}"
             )
 
     return {

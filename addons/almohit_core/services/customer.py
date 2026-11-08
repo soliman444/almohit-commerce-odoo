@@ -29,6 +29,35 @@ def require_merchant_group():
     return require_almohit_group("almohit_core.group_almohit_merchant")
 
 
+def require_merchant_or_approved_marketer():
+    """Read-only reference data: merchants, or approved marketers.
+
+    Does not grant marketers access to merchant addresses or other
+    merchant-owned records — only shared lookups such as countries.
+    """
+    if not require_merchant_group():
+        return None
+    partner, err = require_customer_partner()
+    if err:
+        return error(
+            "ACCESS_DENIED",
+            "You do not have permission to access this resource.",
+            403,
+        )
+    if partner_app_role(partner) != "marketer":
+        return error(
+            "ACCESS_DENIED",
+            "You do not have permission to access this resource.",
+            403,
+        )
+    if partner.almohit_trade_status != "approved":
+        return error(
+            "WHOLESALE_APPROVAL_REQUIRED",
+            "Marketer approval is required.",
+            403,
+        )
+    return None
+
 
 def require_buyer_user():
     user, err = require_api_user()

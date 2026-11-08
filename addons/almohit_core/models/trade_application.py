@@ -38,6 +38,7 @@ class AlmohitTradeApplication(models.Model):
     phone = fields.Char()
     street = fields.Char()
     city = fields.Char()
+    country_id = fields.Many2one("res.country", string="Country")
     manager_name = fields.Char(string="Shop Manager")
     employee_name = fields.Char(string="Other Employee")
     bank_account = fields.Char()
@@ -172,6 +173,8 @@ class AlmohitTradeApplication(models.Model):
             values["street"] = self.street
         if self.city:
             values["city"] = self.city
+        if self.country_id:
+            values["country_id"] = self.country_id.id
         if self.phone:
             values["phone"] = self.phone
         if self.manager_name:

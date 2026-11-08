@@ -42,6 +42,7 @@
                             <field name="phone"/>
                             <field name="street"/>
                             <field name="city"/>
+                            <field name="country_id"/>
                         </group>
                         <group>
                             <field name="manager_name"/>

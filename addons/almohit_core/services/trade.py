@@ -27,6 +27,75 @@ EMAIL_ALREADY_EXISTS = "EMAIL_ALREADY_EXISTS"
 EMAIL_REQUIRED = "EMAIL_REQUIRED"
 NAME_REQUIRED = "NAME_REQUIRED"
 PASSWORD_TOO_SHORT = "PASSWORD_TOO_SHORT"
+INVALID_COUNTRY = "INVALID_COUNTRY"
+
+
+def parse_partner_coordinates(payload):
+    """Parse optional latitude/longitude for partner geo fields.
+
+    Returns ``(latitude, longitude, error_response)``.
+    Missing values stay ``None`` so callers can leave partner coords unchanged.
+    """
+    try:
+        latitude = (
+            float(payload["latitude"])
+            if payload.get("latitude") not in (None, "")
+            else None
+        )
+        longitude = (
+            float(payload["longitude"])
+            if payload.get("longitude") not in (None, "")
+            else None
+        )
+    except (TypeError, ValueError):
+        return None, None, error(
+            "INVALID_LOCATION",
+            "Latitude and longitude must be valid numbers.",
+            400,
+        )
+
+    if latitude is not None and not (-90 <= latitude <= 90):
+        return None, None, error(
+            "INVALID_LOCATION",
+            "Latitude must be between -90 and 90.",
+            400,
+        )
+
+    if longitude is not None and not (-180 <= longitude <= 180):
+        return None, None, error(
+            "INVALID_LOCATION",
+            "Longitude must be between -180 and 180.",
+            400,
+        )
+
+    return latitude, longitude, None
+
+
+def parse_partner_country(env, payload):
+    """Resolve optional ``country_code`` (ISO) to ``res.country``.
+
+    Returns ``(country_or_empty, error_response)``.
+    Missing/blank code → empty recordset and no error.
+    """
+    Country = env["res.country"].sudo()
+    raw = payload.get("country_code")
+    if raw in (None, ""):
+        return Country.browse(), None
+    code = str(raw).strip().upper()
+    if not code or len(code) > 3 or not code.isalpha():
+        return None, error(
+            "INVALID_COUNTRY",
+            "country_code must be a valid ISO country code (e.g. YE, SA, AE).",
+            400,
+        )
+    country = Country.search([("code", "=", code)], limit=1)
+    if not country:
+        return None, error(
+            "INVALID_COUNTRY",
+            "Unknown country_code %s." % code,
+            400,
+        )
+    return country, None
 
 
 def _applications(env):
@@ -81,6 +150,16 @@ def serialize_application(application):
         "phone": application.phone or None,
         "street": application.street or None,
         "city": application.city or None,
+        "country_code": application.country_id.code if application.country_id else None,
+        "country": (
+            {
+                "id": application.country_id.id,
+                "name": application.country_id.name,
+                "code": application.country_id.code,
+            }
+            if application.country_id
+            else None
+        ),
         "manager_name": application.manager_name or None,
         "employee_name": application.employee_name or None,
         "bank_account": application.bank_account or None,
@@ -145,40 +224,9 @@ def create_own_application(env, partner, payload):
     if payment_method and payment_method not in PAYMENT_METHODS:
         return None, INVALID_PAYMENT_METHOD
 
-    # Validate location coordinates.
-    try:
-        latitude = (
-            float(payload["latitude"])
-            if payload.get("latitude") not in (None, "")
-            else None
-        )
-
-        longitude = (
-            float(payload["longitude"])
-            if payload.get("longitude") not in (None, "")
-            else None
-        )
-
-    except (TypeError, ValueError):
-        return None, error(
-            "INVALID_LOCATION",
-            "Latitude and longitude must be valid numbers.",
-            400,
-        )
-
-    if latitude is not None and not (-90 <= latitude <= 90):
-        return None, error(
-            "INVALID_LOCATION",
-            "Latitude must be between -90 and 90.",
-            400,
-        )
-
-    if longitude is not None and not (-180 <= longitude <= 180):
-        return None, error(
-            "INVALID_LOCATION",
-            "Longitude must be between -180 and 180.",
-            400,
-        )
+    latitude, longitude, location_err = parse_partner_coordinates(payload)
+    if location_err:
+        return None, location_err
 
     image_b64, image_err = _decode_image(
         {
@@ -318,38 +366,15 @@ def create_recruited_merchant(env, marketer, payload):
     )
     if image_err:
         return None, image_err
-    
-    try:
-        latitude = (
-            float(payload["latitude"])
-            if payload.get("latitude") not in (None, "")
-            else None
-        )
-        longitude = (
-            float(payload["longitude"])
-            if payload.get("longitude") not in (None, "")
-            else None
-        )
-    except (TypeError, ValueError):
-        return None, error(
-            "INVALID_LOCATION",
-            "Latitude and longitude must be valid numbers.",
-            400,
-        )
 
-    if latitude is not None and not (-90 <= latitude <= 90):
-        return None, error(
-            "INVALID_LOCATION",
-            "Latitude must be between -90 and 90.",
-            400,
-        )
+    latitude, longitude, location_err = parse_partner_coordinates(payload)
+    if location_err:
+        return None, location_err
 
-    if longitude is not None and not (-180 <= longitude <= 180):
-        return None, error(
-            "INVALID_LOCATION",
-            "Longitude must be between -180 and 180.",
-            400,
-        )
+    country, country_err = parse_partner_country(env, payload)
+    if country_err:
+        return None, country_err
+
     user, code = _register_portal_user(env, name, email, password, phone, "merchant")
     if code:
         return None, code
@@ -365,8 +390,11 @@ def create_recruited_merchant(env, marketer, payload):
     if longitude is not None:
         partner_vals["partner_longitude"] = longitude
 
+    if country:
+        partner_vals["country_id"] = country.id
+
     partner.write(partner_vals)
-    
+
     values = {
         "partner_id": partner.id,
         "requested_role": "merchant",
@@ -383,6 +411,8 @@ def create_recruited_merchant(env, marketer, payload):
         "payment_method": payment_method or False,
         "notes": (payload.get("notes") or "").strip() or False,
     }
+    if country:
+        values["country_id"] = country.id
     if image_b64:
         values["shop_image"] = image_b64
     try:

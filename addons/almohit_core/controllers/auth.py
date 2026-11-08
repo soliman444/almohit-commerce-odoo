@@ -5,6 +5,7 @@ from odoo.http import request
 
 from ..services.api import CORS_HEADERS, success, error
 from ..services.customer import require_api_user, serialize_auth_user
+from ..services.trade import parse_partner_coordinates
 
 
 class AlmohitAuthController(http.Controller):
@@ -26,7 +27,15 @@ class AlmohitAuthController(http.Controller):
                 400,
             )
 
-        extra_keys = set(payload) - {"name", "email", "password", "phone", "role"}
+        extra_keys = set(payload) - {
+            "name",
+            "email",
+            "password",
+            "phone",
+            "role",
+            "latitude",
+            "longitude",
+        }
         if extra_keys:
             return error(
                 "INVALID_FIELDS",
@@ -65,6 +74,10 @@ class AlmohitAuthController(http.Controller):
                 "Password must be at least 8 characters.",
                 400,
             )
+
+        latitude, longitude, location_err = parse_partner_coordinates(payload)
+        if location_err:
+            return location_err
 
         Users = (
             request.env["res.users"]
@@ -112,13 +125,18 @@ class AlmohitAuthController(http.Controller):
 
         partner = user.partner_id
 
-        partner.write({
+        partner_vals = {
             "name": name,
             "email": email,
             "phone": phone or False,
             "almohit_trade_status": "normal",
             "almohit_app_role": role,
-        })
+        }
+        if latitude is not None:
+            partner_vals["partner_latitude"] = latitude
+        if longitude is not None:
+            partner_vals["partner_longitude"] = longitude
+        partner.write(partner_vals)
 
         return success(serialize_auth_user(user, partner), status=201)
 

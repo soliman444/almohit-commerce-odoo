@@ -12,7 +12,12 @@ from ..services.addresses import (
     validate_state_country,
 )
 from ..services.api import error, paginated_success, parse_pagination, success
-from ..services.customer import commercial_partner, require_customer_partner, require_merchant_group
+from ..services.customer import (
+    commercial_partner,
+    require_customer_partner,
+    require_merchant_group,
+    require_merchant_or_approved_marketer,
+)
 
 
 class AlmohitAddressController(http.Controller):
@@ -279,7 +284,7 @@ class AlmohitAddressController(http.Controller):
         csrf=False,
     )
     def list_countries(self, **kwargs):
-        err = require_merchant_group()
+        err = require_merchant_or_approved_marketer()
         if err:
             return err
 
