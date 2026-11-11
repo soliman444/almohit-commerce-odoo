@@ -44,6 +44,7 @@ _LIST_PRODUCT_KEYS = (
     "uom",
     "currency",
     "has_variants",
+    "is_favorite",
     "variants",
     "images",
     "price",

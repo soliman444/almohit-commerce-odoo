@@ -208,6 +208,10 @@ def serialize_template(
         ),
         "currency": currency_name or tmpl.env.company.sudo().currency_id.name,
         "has_variants": _template_has_variants(tmpl),
+        # Odoo product star (priority): '1' = Favorite, else Normal.
+        "is_favorite": bool(
+            "priority" in tmpl._fields and str(tmpl.priority or "0") == "1"
+        ),
         "variants": [
             _serialize_variant(
                 variant,
@@ -267,7 +271,7 @@ def serialize_category(category):
                 else "1"
             )
             image_url = (
-                f"{base_url}/web/image/{attachment.id}?unique={uniqgit ue}"
+                f"{base_url}/web/image/{attachment.id}?unique={uniqgitue}"
             )
 
     return {

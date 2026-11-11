@@ -82,7 +82,7 @@ def serialize_cart(order):
                 else None
             ),
             "min_order_qty": template.almohit_min_order_qty,
-            "available_qty": available_qty(product, order.warehouse_id),
+            "available_qty": available_qty(product, aggregated=True),
             "unit_price": line.price_unit,
             "subtotal": line.price_subtotal,
         })

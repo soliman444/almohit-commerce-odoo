@@ -1,6 +1,6 @@
 {
     "name": "Almohit Core",
-    "version": "17.0.1.79.2",
+    "version": "17.0.1.80.0",
     "summary": "Core backend and API for Almohit",
     "category": "Sales",
     "author": "Almohit",
