@@ -997,6 +997,10 @@
           "has_variants": {
             "type": "boolean"
           },
+          "is_favorite": {
+            "type": "boolean",
+            "description": "True when the product template star (Odoo `priority`) is Favorite (`1`); otherwise false."
+          },
           "variants": {
             "type": "array",
             "items": {
